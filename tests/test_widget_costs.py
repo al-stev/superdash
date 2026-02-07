@@ -14,17 +14,27 @@ def test_stats_widget_format_summary():
     assert "3,291" in text
 
 
-def test_stats_widget_shows_compaction_details():
-    """Compactions should show individual events with token counts and type."""
+def test_stats_widget_shows_compaction_counts():
+    """Stats should show summary counts for each compaction type."""
     from superpowers_dashboard.watcher import CompactionEvent
     w = StatsWidget()
     compactions = [
         CompactionEvent(timestamp="2026-02-07T08:14:37.918Z", pre_tokens=169162, trigger="auto", kind="compaction"),
+        CompactionEvent(timestamp="2026-02-07T08:30:00.000Z", pre_tokens=170000, trigger="auto", kind="compaction"),
         CompactionEvent(timestamp="2026-02-07T09:00:00.000Z", pre_tokens=50000, trigger="auto", kind="microcompaction"),
     ]
     text = w.format_compactions(compactions)
-    assert "Compactions" in text
-    assert "169,162" in text
-    assert "50,000" in text
-    assert "compact" in text.lower()
-    assert "micro" in text.lower()
+    assert "Context compactions: 2" in text
+    assert "Context resets: 1" in text
+
+
+def test_stats_widget_compaction_counts_omits_zero():
+    """Only show compaction types that actually occurred."""
+    from superpowers_dashboard.watcher import CompactionEvent
+    w = StatsWidget()
+    compactions = [
+        CompactionEvent(timestamp="2026-02-07T08:14:37.918Z", pre_tokens=169162, trigger="auto", kind="compaction"),
+    ]
+    text = w.format_compactions(compactions)
+    assert "Context compactions: 1" in text
+    assert "resets" not in text.lower()

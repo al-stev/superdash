@@ -16,6 +16,7 @@ class SkillEvent:
     cache_read_tokens: int = 0
     cache_write_tokens: int = 0
     models: set = field(default_factory=set)
+    duration_ms: int = 0
 
     @property
     def start_time(self) -> datetime:
@@ -48,6 +49,7 @@ class SessionParser:
         self.active_skill: str | None = None
         self.used_skills: set[str] = set()
         self.overhead_tokens = {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0}
+        self.overhead_duration_ms: int = 0
         self._pending_skill: dict | None = None
         self.tool_counts: dict[str, int] = {}
         self.compactions: list[CompactionEvent] = []
@@ -152,6 +154,12 @@ class SessionParser:
                 trigger=meta.get("trigger", "unknown"),
                 kind="microcompaction",
             ))
+        elif subtype == "turn_duration":
+            duration = entry.get("durationMs", 0)
+            if self.skill_events and self.active_skill:
+                self.skill_events[-1].duration_ms += duration
+            else:
+                self.overhead_duration_ms += duration
 
     def _accumulate_tokens(self, usage: dict, model: str):
         input_tok = usage.get("input_tokens", 0)

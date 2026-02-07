@@ -173,3 +173,39 @@ def test_parser_tracks_subagents():
     assert parser.subagents[0].description == "Implement config module"
     assert parser.subagents[0].model == "sonnet"
     assert parser.subagents[0].subagent_type == "general-purpose"
+
+
+def test_parser_accumulates_turn_duration():
+    """turn_duration system entries should accumulate on the active skill's duration_ms."""
+    parser = SessionParser()
+    for line in _make_skill_invocation("brainstorming", tool_use_id="t1"):
+        parser.process_line(line)
+    # Simulate two turn_duration entries while brainstorming is active
+    parser.process_line(json.dumps({
+        "type": "system",
+        "subtype": "turn_duration",
+        "durationMs": 30000,
+        "timestamp": "2026-02-06T22:20:00.000Z",
+    }))
+    parser.process_line(json.dumps({
+        "type": "system",
+        "subtype": "turn_duration",
+        "durationMs": 45000,
+        "timestamp": "2026-02-06T22:25:00.000Z",
+    }))
+    assert parser.skill_events[0].duration_ms == 75000
+
+
+def test_parser_turn_duration_before_skill_goes_to_overhead():
+    """turn_duration before any skill is active should go to overhead."""
+    parser = SessionParser()
+    parser.process_line(json.dumps({
+        "type": "system",
+        "subtype": "turn_duration",
+        "durationMs": 10000,
+        "timestamp": "2026-02-06T22:00:00.000Z",
+    }))
+    for line in _make_skill_invocation("brainstorming", tool_use_id="t1"):
+        parser.process_line(line)
+    assert parser.skill_events[0].duration_ms == 0
+    assert parser.overhead_duration_ms == 10000

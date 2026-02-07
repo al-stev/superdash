@@ -1,5 +1,4 @@
 """Main Textual application — layout, themes, file watching."""
-from datetime import datetime, timezone
 from pathlib import Path
 
 from textual.app import App, ComposeResult
@@ -184,20 +183,12 @@ class SuperpowersDashboard(App):
             # Calculate cost using primary model
             model = next(iter(event.models), "claude-opus-4-6")
             cost = calculate_cost(model, event.input_tokens, event.output_tokens, event.cache_read_tokens, event.cache_write_tokens, pricing)
-            # Duration
-            duration = 0.0
-            if i + 1 < len(self.parser.skill_events):
-                next_event = self.parser.skill_events[i + 1]
-                duration = (next_event.start_time - event.start_time).total_seconds()
-            elif event.skill_name == self.parser.active_skill:
-                duration = (datetime.now(timezone.utc) - event.start_time).total_seconds()
-
             entries.append({
                 "skill_name": event.skill_name,
                 "args": event.args,
                 "total_tokens": total_tokens,
                 "cost": cost,
-                "duration_seconds": duration,
+                "duration_seconds": event.duration_ms / 1000.0,
                 "is_active": event.skill_name == self.parser.active_skill and i == len(self.parser.skill_events) - 1,
             })
 

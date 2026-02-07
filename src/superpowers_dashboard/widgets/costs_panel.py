@@ -25,10 +25,13 @@ class StatsWidget(Static):
     def format_compactions(self, compactions: list) -> str:
         if not compactions:
             return ""
-        parts = ["  Compactions:"]
-        for c in compactions:
-            label = "micro" if c.kind == "microcompaction" else "full"
-            parts.append(f"    {c.pre_tokens:,} tok ({label})")
+        full = sum(1 for c in compactions if c.kind == "compaction")
+        micro = sum(1 for c in compactions if c.kind == "microcompaction")
+        parts = []
+        if full:
+            parts.append(f"  Context compactions: {full}")
+        if micro:
+            parts.append(f"  Context resets: {micro}")
         return "\n".join(parts)
 
     def update_stats(self, summary: str, per_skill: list[dict], tool_counts: dict[str, int] | None = None, subagent_count: int = 0, compactions: list | None = None):
