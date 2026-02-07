@@ -188,34 +188,30 @@ class SessionParser:
             self.overhead_tokens["cache_write"] += cache_write
 
 
-def find_latest_session(base_dir: Path | None = None) -> Path | None:
-    """Find the most recently modified session JSONL file."""
-    if base_dir is None:
-        base_dir = Path.home() / ".claude" / "projects"
-    if not base_dir.exists():
-        return None
-    sessions = list(base_dir.glob("*/*.jsonl"))
-    sessions = [s for s in sessions if "subagents" not in s.parts]
-    if not sessions:
-        return None
-    return max(sessions, key=lambda p: p.stat().st_mtime)
+def _cwd_to_project_dir_name(cwd: str) -> str:
+    """Convert a working directory path to Claude's project directory name."""
+    return cwd.replace("/", "-")
 
 
-def find_project_sessions(base_dir: Path | None = None) -> list[Path]:
-    """Find all session JSONL files for the project with the most recent activity.
+def find_project_sessions(base_dir: Path | None = None, project_cwd: str | None = None) -> list[Path]:
+    """Find all session JSONL files for the given project directory.
 
-    Returns all sessions in that project directory, sorted oldest-first.
+    Matches CWD to Claude's project directory naming convention.
+    Returns sessions sorted oldest-first.
     """
     if base_dir is None:
         base_dir = Path.home() / ".claude" / "projects"
     if not base_dir.exists():
         return []
-    sessions = list(base_dir.glob("*/*.jsonl"))
-    sessions = [s for s in sessions if "subagents" not in s.parts]
-    if not sessions:
+    if project_cwd is None:
+        project_cwd = str(Path.cwd())
+
+    dir_name = _cwd_to_project_dir_name(project_cwd)
+    project_dir = base_dir / dir_name
+    if not project_dir.exists():
         return []
-    latest = max(sessions, key=lambda p: p.stat().st_mtime)
-    project_dir = latest.parent
-    project_sessions = [s for s in sessions if s.parent == project_dir]
-    project_sessions.sort(key=lambda p: p.stat().st_mtime)
-    return project_sessions
+
+    sessions = list(project_dir.glob("*.jsonl"))
+    sessions = [s for s in sessions if "subagents" not in s.parts]
+    sessions.sort(key=lambda p: p.stat().st_mtime)
+    return sessions

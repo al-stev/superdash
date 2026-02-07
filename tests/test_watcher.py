@@ -229,3 +229,39 @@ def test_parser_tracks_last_context_tokens():
         "timestamp": "2026-02-06T22:20:00.000Z",
     }))
     assert parser.last_context_tokens == 50000
+
+
+def test_find_project_sessions_by_cwd(tmp_path):
+    """Sessions should be found by matching CWD to Claude's directory naming."""
+    from superpowers_dashboard.watcher import find_project_sessions
+    project_dir = tmp_path / "-Users-al-myproject"
+    project_dir.mkdir()
+    session1 = project_dir / "session1.jsonl"
+    session2 = project_dir / "session2.jsonl"
+    session1.write_text('{"type":"user"}\n')
+    session2.write_text('{"type":"user"}\n')
+
+    other_dir = tmp_path / "-Users-al-other"
+    other_dir.mkdir()
+    (other_dir / "other.jsonl").write_text('{"type":"user"}\n')
+
+    sessions = find_project_sessions(
+        base_dir=tmp_path,
+        project_cwd="/Users/al/myproject",
+    )
+    assert len(sessions) == 2
+    assert all(s.parent == project_dir for s in sessions)
+
+
+def test_find_project_sessions_no_match(tmp_path):
+    """Return empty list when no sessions match the CWD."""
+    from superpowers_dashboard.watcher import find_project_sessions
+    project_dir = tmp_path / "-Users-al-other"
+    project_dir.mkdir()
+    (project_dir / "s.jsonl").write_text('{"type":"user"}\n')
+
+    sessions = find_project_sessions(
+        base_dir=tmp_path,
+        project_cwd="/Users/al/myproject",
+    )
+    assert sessions == []

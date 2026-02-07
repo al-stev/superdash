@@ -9,7 +9,7 @@ from textual.widgets import Header, Footer, Static
 
 from superpowers_dashboard.config import load_config
 from superpowers_dashboard.registry import SkillRegistry
-from superpowers_dashboard.watcher import SessionParser, find_latest_session, find_project_sessions
+from superpowers_dashboard.watcher import SessionParser, find_project_sessions
 from superpowers_dashboard.costs import calculate_cost
 from superpowers_dashboard.widgets.skill_list import SkillListWidget
 from superpowers_dashboard.widgets.workflow import WorkflowWidget
@@ -99,7 +99,7 @@ class SuperpowersDashboard(App):
         Binding("t", "toggle_theme", "Theme"),
     ]
 
-    def __init__(self):
+    def __init__(self, project_dir: str | None = None):
         super().__init__()
         self.config = load_config()
         self.parser = SessionParser()
@@ -107,6 +107,7 @@ class SuperpowersDashboard(App):
         self._session_path: Path | None = None
         self._file_pos = 0
         self._last_activity_count = 0
+        self._project_dir = project_dir
 
         # Load skill registry
         skills_dir = _find_skills_dir()
@@ -136,7 +137,7 @@ class SuperpowersDashboard(App):
         self.theme = "terminal"
 
         # Find all sessions for this project and parse them
-        project_sessions = find_project_sessions()
+        project_sessions = find_project_sessions(project_cwd=self._project_dir)
         if project_sessions:
             self._session_path = project_sessions[-1]  # latest for polling
             self._load_all_sessions(project_sessions)
