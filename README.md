@@ -43,39 +43,6 @@ superdash --project-dir /path/to/project
 - `q` -- Quit
 - `t` -- Toggle theme (Terminal / Mainframe)
 
-## Auto-launch with Claude Code
-
-Add to your `~/.zshrc`:
-
-**Ghostty:**
-
-```bash
-claude-dash() {
-  open -na Ghostty.app --args --working-directory="$(pwd)" -e superdash
-  claude "$@"
-}
-```
-
-**Terminal.app:**
-
-```bash
-claude-dash() {
-  osascript -e "tell application \"Terminal\" to do script \"cd $(pwd) && superdash\""
-  claude "$@"
-}
-```
-
-**iTerm2:**
-
-```bash
-claude-dash() {
-  osascript -e "tell application \"iTerm2\" to create window with default profile command \"cd $(pwd) && superdash\""
-  claude "$@"
-}
-```
-
-Then use `claude-dash` instead of `claude` to launch both together.
-
 ## How It Works
 
 Superdash reads Claude Code session files (`~/.claude/projects/<project>/*.jsonl`) and polls for new data every 500ms. It detects skill invocations, token usage, compactions, and subagent dispatches from the JSONL stream.
