@@ -22,6 +22,24 @@ class SkillEvent:
         return datetime.fromisoformat(self.timestamp.replace("Z", "+00:00"))
 
 
+@dataclass
+class CompactionEvent:
+    """A context compaction or microcompaction event."""
+    timestamp: str
+    pre_tokens: int
+    trigger: str
+    kind: str = "compaction"  # "compaction" or "microcompaction"
+
+
+@dataclass
+class SubagentEvent:
+    """A subagent dispatch event."""
+    timestamp: str
+    description: str
+    subagent_type: str
+    model: str
+
+
 class SessionParser:
     """Parses JSONL lines and tracks skill state."""
 
@@ -31,6 +49,9 @@ class SessionParser:
         self.used_skills: set[str] = set()
         self.overhead_tokens = {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0}
         self._pending_skill: dict | None = None
+        self.tool_counts: dict[str, int] = {}
+        self.compactions: list[CompactionEvent] = []
+        self.subagents: list[SubagentEvent] = []
 
     def process_line(self, line: str):
         try:
@@ -44,6 +65,8 @@ class SessionParser:
             self._process_assistant(entry)
         elif entry_type == "user":
             self._process_user(entry)
+        elif entry_type == "system":
+            self._process_system(entry)
 
     def _process_assistant(self, entry: dict):
         message = entry.get("message", {})
@@ -52,7 +75,16 @@ class SessionParser:
         model = message.get("model", "")
 
         for item in content:
-            if item.get("type") == "tool_use" and item.get("name") == "Skill":
+            if item.get("type") != "tool_use":
+                continue
+            tool_name = item.get("name", "")
+
+            # Track all tool usage
+            if tool_name:
+                self.tool_counts[tool_name] = self.tool_counts.get(tool_name, 0) + 1
+
+            # Skill invocations
+            if tool_name == "Skill":
                 skill_input = item.get("input", {})
                 skill_full = skill_input.get("skill", "")
                 skill_name = skill_full.split(":")[-1] if ":" in skill_full else skill_full
@@ -67,9 +99,17 @@ class SessionParser:
                     "cache_write_tokens": usage.get("cache_creation_input_tokens", 0),
                     "model": model,
                 }
-                # Tokens from the invocation message will be attributed
-                # to the SkillEvent when it is created, so skip accumulation.
                 return
+
+            # Subagent dispatches
+            if tool_name == "Task":
+                task_input = item.get("input", {})
+                self.subagents.append(SubagentEvent(
+                    timestamp=entry.get("timestamp", ""),
+                    description=task_input.get("description", ""),
+                    subagent_type=task_input.get("subagent_type", ""),
+                    model=task_input.get("model", "inherit"),
+                ))
 
         self._accumulate_tokens(usage, model)
 
@@ -93,6 +133,25 @@ class SessionParser:
             self.skill_events.append(event)
             self.active_skill = skill["skill_name"]
             self._pending_skill = None
+
+    def _process_system(self, entry: dict):
+        subtype = entry.get("subtype", "")
+        if subtype == "compact_boundary":
+            meta = entry.get("compactMetadata", {})
+            self.compactions.append(CompactionEvent(
+                timestamp=entry.get("timestamp", ""),
+                pre_tokens=meta.get("preTokens", 0),
+                trigger=meta.get("trigger", "unknown"),
+                kind="compaction",
+            ))
+        elif subtype == "microcompact_boundary":
+            meta = entry.get("microcompactMetadata", {})
+            self.compactions.append(CompactionEvent(
+                timestamp=entry.get("timestamp", ""),
+                pre_tokens=meta.get("preTokens", 0),
+                trigger=meta.get("trigger", "unknown"),
+                kind="microcompaction",
+            ))
 
     def _accumulate_tokens(self, usage: dict, model: str):
         input_tok = usage.get("input_tokens", 0)
@@ -126,3 +185,23 @@ def find_latest_session(base_dir: Path | None = None) -> Path | None:
     if not sessions:
         return None
     return max(sessions, key=lambda p: p.stat().st_mtime)
+
+
+def find_project_sessions(base_dir: Path | None = None) -> list[Path]:
+    """Find all session JSONL files for the project with the most recent activity.
+
+    Returns all sessions in that project directory, sorted oldest-first.
+    """
+    if base_dir is None:
+        base_dir = Path.home() / ".claude" / "projects"
+    if not base_dir.exists():
+        return []
+    sessions = list(base_dir.glob("*/*.jsonl"))
+    sessions = [s for s in sessions if "subagents" not in s.parts]
+    if not sessions:
+        return []
+    latest = max(sessions, key=lambda p: p.stat().st_mtime)
+    project_dir = latest.parent
+    project_sessions = [s for s in sessions if s.parent == project_dir]
+    project_sessions.sort(key=lambda p: p.stat().st_mtime)
+    return project_sessions

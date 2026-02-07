@@ -1,30 +1,38 @@
 """Skill list widget showing all skills with status indicators."""
+from rich.text import Text
 from textual.widgets import Static
 from textual.reactive import reactive
 
-STATE_ICONS = {
-    "active": "\u25c6",   # ◆
-    "used": "\u25cf",      # ●
-    "available": "\u25cb", # ○
-}
 
 class SkillListWidget(Static):
     """Displays all skills with active/used/available status."""
     skills_data: reactive[dict] = reactive(dict)
 
     def format_skill(self, name: str, state: str) -> str:
-        icon = STATE_ICONS.get(state, "\u25cb")
-        return f"  {icon} {name}"
+        """Format a single skill line as plain text (for testing)."""
+        if state == "active":
+            return f"  >> {name}"
+        elif state == "used":
+            return f"  *  {name}"
+        else:
+            return f"     {name}"
 
     def update_skills(self, all_skills: list[str], active: str | None, used: set[str]):
-        lines = []
-        for name in all_skills:
+        text = Text()
+        for i, name in enumerate(all_skills):
             if name == active:
                 state = "active"
             elif name in used:
                 state = "used"
             else:
                 state = "available"
-            lines.append(self.format_skill(name, state))
-        self.skills_data = {"lines": lines, "active": active, "used": used}
-        self.update("\n".join(lines))
+            if i > 0:
+                text.append("\n")
+            if state == "active":
+                text.append(f"  >> {name}", style="bold reverse")
+            elif state == "used":
+                text.append(f"  *  {name}", style="bold")
+            else:
+                text.append(f"     {name}", style="dim")
+        self.skills_data = {"lines": [], "active": active, "used": used}
+        self.update(text)

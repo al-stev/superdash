@@ -1,7 +1,7 @@
 # tests/test_watcher.py
 import json
 from pathlib import Path
-from superpowers_dashboard.watcher import SessionParser, SkillEvent
+from superpowers_dashboard.watcher import SessionParser, SkillEvent, CompactionEvent
 
 
 def _make_skill_invocation(skill_name: str, args: str = "", timestamp: str = "2026-02-06T22:16:50.558Z", tool_use_id: str = "toolu_abc") -> list[str]:
@@ -88,3 +88,88 @@ def test_parser_handles_non_skill_lines():
     parser.process_line(json.dumps({"type": "progress", "data": {"type": "hook_progress"}, "timestamp": "2026-02-06T22:00:00.000Z"}))
     assert len(parser.skill_events) == 0
     assert parser.active_skill is None
+
+
+def test_parser_tracks_tool_counts():
+    parser = SessionParser()
+    for line in _make_skill_invocation("brainstorming", tool_use_id="t1"):
+        parser.process_line(line)
+    # Add a Read tool call
+    parser.process_line(json.dumps({
+        "type": "assistant",
+        "message": {
+            "model": "claude-opus-4-6",
+            "content": [{"type": "tool_use", "id": "t2", "name": "Read", "input": {"file_path": "/foo"}}],
+            "usage": {"input_tokens": 10, "output_tokens": 5, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
+        },
+        "timestamp": "2026-02-06T22:20:00.000Z",
+    }))
+    assert parser.tool_counts["Skill"] == 1
+    assert parser.tool_counts["Read"] == 1
+
+
+def test_parser_detects_compaction():
+    parser = SessionParser()
+    parser.process_line(json.dumps({
+        "type": "system",
+        "subtype": "compact_boundary",
+        "compactMetadata": {"preTokens": 169162, "trigger": "auto"},
+        "timestamp": "2026-02-07T08:14:37.918Z",
+    }))
+    assert len(parser.compactions) == 1
+    assert parser.compactions[0].pre_tokens == 169162
+    assert parser.compactions[0].kind == "compaction"
+
+
+def test_parser_detects_microcompaction():
+    parser = SessionParser()
+    parser.process_line(json.dumps({
+        "type": "system",
+        "subtype": "microcompact_boundary",
+        "microcompactMetadata": {"preTokens": 50000, "trigger": "auto"},
+        "timestamp": "2026-02-07T09:00:00.000Z",
+    }))
+    assert len(parser.compactions) == 1
+    assert parser.compactions[0].pre_tokens == 50000
+    assert parser.compactions[0].kind == "microcompaction"
+
+
+def test_parser_tracks_both_compaction_types():
+    parser = SessionParser()
+    parser.process_line(json.dumps({
+        "type": "system",
+        "subtype": "compact_boundary",
+        "compactMetadata": {"preTokens": 169162, "trigger": "auto"},
+        "timestamp": "2026-02-07T08:14:37.918Z",
+    }))
+    parser.process_line(json.dumps({
+        "type": "system",
+        "subtype": "microcompact_boundary",
+        "microcompactMetadata": {"preTokens": 50000, "trigger": "auto"},
+        "timestamp": "2026-02-07T09:00:00.000Z",
+    }))
+    assert len(parser.compactions) == 2
+    assert parser.compactions[0].kind == "compaction"
+    assert parser.compactions[1].kind == "microcompaction"
+
+
+def test_parser_tracks_subagents():
+    parser = SessionParser()
+    parser.process_line(json.dumps({
+        "type": "assistant",
+        "message": {
+            "model": "claude-opus-4-6",
+            "content": [{"type": "tool_use", "id": "t1", "name": "Task", "input": {
+                "description": "Implement config module",
+                "subagent_type": "general-purpose",
+                "model": "sonnet",
+                "prompt": "Implement the config module..."
+            }}],
+            "usage": {"input_tokens": 10, "output_tokens": 5, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
+        },
+        "timestamp": "2026-02-07T06:00:00.000Z",
+    }))
+    assert len(parser.subagents) == 1
+    assert parser.subagents[0].description == "Implement config module"
+    assert parser.subagents[0].model == "sonnet"
+    assert parser.subagents[0].subagent_type == "general-purpose"

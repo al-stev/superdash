@@ -4,42 +4,58 @@ from pathlib import Path
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.theme import Theme
 from textual.widgets import Header, Footer, Static
 
 from superpowers_dashboard.config import load_config
 from superpowers_dashboard.registry import SkillRegistry
-from superpowers_dashboard.watcher import SessionParser, find_latest_session
+from superpowers_dashboard.watcher import SessionParser, find_latest_session, find_project_sessions
 from superpowers_dashboard.costs import calculate_cost
 from superpowers_dashboard.widgets.skill_list import SkillListWidget
 from superpowers_dashboard.widgets.workflow import WorkflowWidget
-from superpowers_dashboard.widgets.costs_panel import CostsWidget
+from superpowers_dashboard.widgets.costs_panel import StatsWidget
 from superpowers_dashboard.widgets.activity import ActivityLogWidget
 
 
 TERMINAL_THEME = Theme(
     name="terminal",
     primary="#ffffff",
-    secondary="#aaaaaa",
+    secondary="#333333",
     accent="#ffffff",
     foreground="#ffffff",
     background="#000000",
-    surface="#111111",
-    panel="#222222",
+    surface="#000000",
+    panel="#000000",
     dark=True,
+    variables={
+        "border": "#333333",
+        "border-blurred": "#333333",
+        "scrollbar": "#333333",
+        "scrollbar-background": "#000000",
+    },
 )
 
 MAINFRAME_THEME = Theme(
     name="mainframe",
     primary="#33ff33",
-    secondary="#00cc00",
-    accent="#66ff66",
+    secondary="#000000",
+    accent="#33ff33",
     foreground="#33ff33",
     background="#000000",
-    surface="#001100",
-    panel="#002200",
+    surface="#000000",
+    panel="#000000",
     dark=True,
+    variables={
+        "footer-foreground": "#1a7a1a",
+        "footer-background": "#000000",
+        "footer-key-foreground": "#33ff33",
+        "footer-description-foreground": "#1a7a1a",
+        "border": "#0a1f0a",
+        "border-blurred": "#0a1f0a",
+        "scrollbar": "#0a1f0a",
+        "scrollbar-background": "#000000",
+    },
 )
 
 # Default superpowers plugin path
@@ -64,15 +80,19 @@ def _find_skills_dir() -> Path | None:
 class SuperpowersDashboard(App):
     """Terminal dashboard for Claude Code Superpowers skills."""
 
-    TITLE = "SUPERPOWERS DASHBOARD"
+    TITLE = "SUPERDASH"
     CSS = """
+    Screen { background: #000000; }
+    * { background: transparent; }
     #top-row { height: 1fr; }
     #bottom-row { height: 1fr; }
-    #skills-panel { width: 30; border: solid $primary-darken-2; }
-    #workflow-panel { width: 1fr; border: solid $primary-darken-2; }
-    #costs-panel { width: 30; border: solid $primary-darken-2; }
-    #activity-panel { width: 1fr; border: solid $primary-darken-2; }
+    #skills-panel { width: 45; border: tall $border; }
+    #workflow-panel { width: 1fr; border: tall $border; }
+    #stats-panel { width: 45; border: tall $border; }
+    #activity-panel { width: 1fr; border: tall $border; }
     .panel-title { text-style: bold; padding: 0 1; }
+    Header { background: #000000; color: $foreground; }
+    Footer { background: #000000; }
     """
 
     BINDINGS = [
@@ -87,6 +107,7 @@ class SuperpowersDashboard(App):
         self._current_theme = "terminal"
         self._session_path: Path | None = None
         self._file_pos = 0
+        self._last_activity_count = 0
 
         # Load skill registry
         skills_dir = _find_skills_dir()
@@ -98,13 +119,13 @@ class SuperpowersDashboard(App):
             with Vertical(id="skills-panel"):
                 yield Static("SKILLS", classes="panel-title")
                 yield SkillListWidget(id="skill-list")
-            with Vertical(id="workflow-panel"):
+            with VerticalScroll(id="workflow-panel"):
                 yield Static("WORKFLOW", classes="panel-title")
                 yield WorkflowWidget(id="workflow")
         with Horizontal(id="bottom-row"):
-            with Vertical(id="costs-panel"):
-                yield Static("COSTS", classes="panel-title")
-                yield CostsWidget(id="costs")
+            with Vertical(id="stats-panel"):
+                yield Static("STATS", classes="panel-title")
+                yield StatsWidget(id="stats")
             with Vertical(id="activity-panel"):
                 yield Static("ACTIVITY LOG", classes="panel-title")
                 yield ActivityLogWidget(id="activity")
@@ -115,21 +136,24 @@ class SuperpowersDashboard(App):
         self.register_theme(MAINFRAME_THEME)
         self.theme = "terminal"
 
-        # Find session and start watching
-        self._session_path = find_latest_session()
-        if self._session_path:
-            self._load_existing_session()
+        # Find all sessions for this project and parse them
+        project_sessions = find_project_sessions()
+        if project_sessions:
+            self._session_path = project_sessions[-1]  # latest for polling
+            self._load_all_sessions(project_sessions)
             self.set_interval(0.5, self._poll_session)
         self._refresh_ui()
 
-    def _load_existing_session(self):
-        """Parse existing session file content."""
-        if not self._session_path or not self._session_path.exists():
-            return
-        with open(self._session_path) as f:
-            for line in f:
-                self.parser.process_line(line.strip())
-            self._file_pos = f.tell()
+    def _load_all_sessions(self, session_paths: list[Path]):
+        """Parse all session files in chronological order."""
+        for path in session_paths:
+            if not path.exists():
+                continue
+            with open(path) as f:
+                for line in f:
+                    self.parser.process_line(line.strip())
+                if path == session_paths[-1]:
+                    self._file_pos = f.tell()
 
     def _poll_session(self):
         """Check for new lines in the session file."""
@@ -186,8 +210,8 @@ class SuperpowersDashboard(App):
         total_cache_read = sum(e.cache_read_tokens for e in self.parser.skill_events) + self.parser.overhead_tokens["cache_read"]
         total_cost = sum(e["cost"] for e in entries)
 
-        costs_widget = self.query_one("#costs", CostsWidget)
-        summary = costs_widget.format_summary(total_cost, total_input, total_output, total_cache_read)
+        stats_widget = self.query_one("#stats", StatsWidget)
+        summary = stats_widget.format_summary(total_cost, total_input, total_output, total_cache_read)
 
         # Per-skill aggregation
         per_skill: dict[str, float] = {}
@@ -195,13 +219,34 @@ class SuperpowersDashboard(App):
             name = e["skill_name"]
             per_skill[name] = per_skill.get(name, 0) + e["cost"]
         per_skill_list = [{"name": k, "cost": v} for k, v in sorted(per_skill.items(), key=lambda x: -x[1])]
-        costs_widget.update_costs(summary, per_skill_list)
+        stats_widget.update_stats(
+            summary, per_skill_list,
+            tool_counts=self.parser.tool_counts,
+            subagent_count=len(self.parser.subagents),
+            compactions=self.parser.compactions or None,
+        )
 
-        # Update activity log
-        activity = self.query_one("#activity", ActivityLogWidget)
-        activity.clear()
+        # Build chronological activity feed from all event types
+        all_activity = []
         for event in self.parser.skill_events:
-            activity.add_skill_event(event.timestamp, event.skill_name, event.args)
+            all_activity.append(("skill", event.timestamp, event))
+        for c in self.parser.compactions:
+            all_activity.append(("compaction", c.timestamp, c))
+        for s in self.parser.subagents:
+            all_activity.append(("subagent", s.timestamp, s))
+        all_activity.sort(key=lambda x: x[1])
+
+        # Append only new events
+        activity = self.query_one("#activity", ActivityLogWidget)
+        for item in all_activity[self._last_activity_count:]:
+            kind, _, data = item
+            if kind == "skill":
+                activity.add_skill_event(data.timestamp, data.skill_name, data.args)
+            elif kind == "compaction":
+                activity.add_compaction(data.timestamp, data.kind, data.pre_tokens)
+            elif kind == "subagent":
+                activity.add_subagent(data.timestamp, data.description, data.subagent_type, data.model)
+        self._last_activity_count = len(all_activity)
 
         # Update header with session info and total cost
         session_id = self._session_path.stem[:6] if self._session_path else "none"

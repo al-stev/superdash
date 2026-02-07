@@ -19,7 +19,7 @@ dev = [
 ]
 
 [project.scripts]
-superpowers-dashboard = "superpowers_dashboard.__main__:main"
+superdash = "superpowers_dashboard.__main__:main"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
