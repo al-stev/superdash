@@ -47,6 +47,15 @@ superdash --project-dir /path/to/project
 
 Add to your `~/.zshrc`:
 
+**Ghostty:**
+
+```bash
+claude-dash() {
+  open -na Ghostty.app --args --working-directory="$(pwd)" -e superdash
+  claude "$@"
+}
+```
+
 **Terminal.app:**
 
 ```bash
