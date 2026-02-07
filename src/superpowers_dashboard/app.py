@@ -122,7 +122,7 @@ class SuperpowersDashboard(App):
                 yield Static("WORKFLOW", classes="panel-title")
                 yield WorkflowWidget(id="workflow")
         with Horizontal(id="bottom-row"):
-            with Vertical(id="stats-panel"):
+            with VerticalScroll(id="stats-panel"):
                 yield Static("STATS", classes="panel-title")
                 yield StatsWidget(id="stats")
             with Vertical(id="activity-panel"):
@@ -210,11 +210,13 @@ class SuperpowersDashboard(App):
             name = e["skill_name"]
             per_skill[name] = per_skill.get(name, 0) + e["cost"]
         per_skill_list = [{"name": k, "cost": v} for k, v in sorted(per_skill.items(), key=lambda x: -x[1])]
+        context_tokens = self.parser.last_context_tokens
         stats_widget.update_stats(
             summary, per_skill_list,
             tool_counts=self.parser.tool_counts,
             subagent_count=len(self.parser.subagents),
             compactions=self.parser.compactions or None,
+            context_tokens=context_tokens,
         )
 
         # Build chronological activity feed from all event types

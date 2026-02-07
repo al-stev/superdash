@@ -38,3 +38,33 @@ def test_stats_widget_compaction_counts_omits_zero():
     text = w.format_compactions(compactions)
     assert "Context compactions: 1" in text
     assert "resets" not in text.lower()
+
+
+def test_per_skill_bar_fits_in_panel():
+    """Each per-skill line must fit within 43 chars (45 panel - 2 border)."""
+    w = StatsWidget()
+    per_skill = [
+        {"name": "subagent-driven-development", "cost": 28.56},
+        {"name": "test-driven-development", "cost": 9.25},
+        {"name": "brainstorming", "cost": 4.20},
+    ]
+    lines = w.format_per_skill(per_skill)
+    for line in lines:
+        assert len(line) <= 43, f"Line too wide ({len(line)} chars): {line!r}"
+
+
+def test_per_skill_bars_are_aligned():
+    """All bar characters should start at the same column."""
+    w = StatsWidget()
+    per_skill = [
+        {"name": "subagent-driven-development", "cost": 28.56},
+        {"name": "brainstorming", "cost": 4.20},
+    ]
+    lines = w.format_per_skill(per_skill)
+    bar_starts = []
+    for line in lines:
+        for i, ch in enumerate(line):
+            if ch in ("\u2588", "\u2591"):
+                bar_starts.append(i)
+                break
+    assert len(set(bar_starts)) == 1, f"Bars start at different columns: {bar_starts}"

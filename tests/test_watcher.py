@@ -209,3 +209,23 @@ def test_parser_turn_duration_before_skill_goes_to_overhead():
         parser.process_line(line)
     assert parser.skill_events[0].duration_ms == 0
     assert parser.overhead_duration_ms == 10000
+
+
+def test_parser_tracks_last_context_tokens():
+    """last_context_tokens should reflect the most recent turn's total input."""
+    parser = SessionParser()
+    for line in _make_skill_invocation("brainstorming", tool_use_id="t1"):
+        parser.process_line(line)
+    # The skill invocation assistant message has input_tokens=100, cache_read=200
+    assert parser.last_context_tokens == 300
+
+    parser.process_line(json.dumps({
+        "type": "assistant",
+        "message": {
+            "model": "claude-opus-4-6",
+            "content": [{"type": "text", "text": "response"}],
+            "usage": {"input_tokens": 5000, "output_tokens": 200, "cache_read_input_tokens": 45000, "cache_creation_input_tokens": 0},
+        },
+        "timestamp": "2026-02-06T22:20:00.000Z",
+    }))
+    assert parser.last_context_tokens == 50000

@@ -54,6 +54,7 @@ class SessionParser:
         self.tool_counts: dict[str, int] = {}
         self.compactions: list[CompactionEvent] = []
         self.subagents: list[SubagentEvent] = []
+        self.last_context_tokens: int = 0
 
     def process_line(self, line: str):
         try:
@@ -75,6 +76,11 @@ class SessionParser:
         content = message.get("content", [])
         usage = message.get("usage", {})
         model = message.get("model", "")
+
+        # Track context window size from every assistant turn
+        total_input = usage.get("input_tokens", 0) + usage.get("cache_read_input_tokens", 0) + usage.get("cache_creation_input_tokens", 0)
+        if total_input > 0:
+            self.last_context_tokens = total_input
 
         for item in content:
             if item.get("type") != "tool_use":
