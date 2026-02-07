@@ -160,6 +160,15 @@ class SessionParser:
                 trigger=meta.get("trigger", "unknown"),
                 kind="microcompaction",
             ))
+        elif subtype == "local_command":
+            content = entry.get("content", "")
+            if "<command-name>/clear</command-name>" in content:
+                self.compactions.append(CompactionEvent(
+                    timestamp=entry.get("timestamp", ""),
+                    pre_tokens=0,
+                    trigger="manual",
+                    kind="clear",
+                ))
         elif subtype == "turn_duration":
             duration = entry.get("durationMs", 0)
             if self.skill_events and self.active_skill:

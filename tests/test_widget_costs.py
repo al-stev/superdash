@@ -40,6 +40,19 @@ def test_stats_widget_compaction_counts_omits_zero():
     assert "resets" not in text.lower()
 
 
+def test_stats_widget_shows_clear_counts():
+    """Stats should show clear count separately."""
+    from superpowers_dashboard.watcher import CompactionEvent
+    w = StatsWidget()
+    compactions = [
+        CompactionEvent(timestamp="t1", pre_tokens=169162, trigger="auto", kind="compaction"),
+        CompactionEvent(timestamp="t2", pre_tokens=0, trigger="manual", kind="clear"),
+    ]
+    text = w.format_compactions(compactions)
+    assert "compactions:" in text
+    assert "Context clears:" in text
+
+
 def test_per_skill_bar_fits_in_panel():
     """Each per-skill line must fit within 43 chars (45 panel - 2 border)."""
     w = StatsWidget()

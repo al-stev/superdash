@@ -231,6 +231,32 @@ def test_parser_tracks_last_context_tokens():
     assert parser.last_context_tokens == 50000
 
 
+def test_parser_detects_clear_command():
+    """A /clear local_command should be tracked as a clear event."""
+    parser = SessionParser()
+    parser.process_line(json.dumps({
+        "type": "system",
+        "subtype": "local_command",
+        "content": '<command-name>/clear</command-name>\n            <command-message>clear</command-message>\n            <command-args></command-args>',
+        "timestamp": "2026-02-07T12:00:00.000Z",
+    }))
+    assert len(parser.compactions) == 1
+    assert parser.compactions[0].kind == "clear"
+    assert parser.compactions[0].timestamp == "2026-02-07T12:00:00.000Z"
+
+
+def test_parser_ignores_non_clear_local_commands():
+    """Other local commands like /model should not be tracked as clears."""
+    parser = SessionParser()
+    parser.process_line(json.dumps({
+        "type": "system",
+        "subtype": "local_command",
+        "content": '<command-name>/model</command-name>\n            <command-message>model</command-message>\n            <command-args></command-args>',
+        "timestamp": "2026-02-07T12:00:00.000Z",
+    }))
+    assert len(parser.compactions) == 0
+
+
 def test_find_project_sessions_by_cwd(tmp_path):
     """Sessions should be found by matching CWD to Claude's directory naming."""
     from superpowers_dashboard.watcher import find_project_sessions
