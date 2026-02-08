@@ -1,7 +1,7 @@
 # tests/test_watcher.py
 import json
 from pathlib import Path
-from superpowers_dashboard.watcher import SessionParser, SkillEvent, CompactionEvent
+from superpowers_dashboard.watcher import SessionParser, SkillEvent, CompactionEvent, OverheadSegment
 
 
 def _make_skill_invocation(skill_name: str, args: str = "", timestamp: str = "2026-02-06T22:16:50.558Z", tool_use_id: str = "toolu_abc") -> list[str]:
@@ -291,3 +291,115 @@ def test_find_project_sessions_no_match(tmp_path):
         project_cwd="/Users/al/myproject",
     )
     assert sessions == []
+
+
+def test_parser_tracks_overhead_segments():
+    """Overhead before first skill creates a segment with correct tokens and tool count."""
+    parser = SessionParser()
+
+    # Two assistant messages before any skill (overhead work)
+    parser.process_line(json.dumps({
+        "type": "assistant",
+        "message": {
+            "model": "claude-opus-4-6",
+            "content": [
+                {"type": "tool_use", "id": "t0a", "name": "Read", "input": {"file_path": "/foo"}},
+                {"type": "tool_use", "id": "t0b", "name": "Grep", "input": {"pattern": "bar"}},
+            ],
+            "usage": {"input_tokens": 300, "output_tokens": 100, "cache_read_input_tokens": 50, "cache_creation_input_tokens": 10},
+        },
+        "timestamp": "2026-02-06T22:00:00.000Z",
+    }))
+    parser.process_line(json.dumps({
+        "type": "assistant",
+        "message": {
+            "model": "claude-opus-4-6",
+            "content": [
+                {"type": "tool_use", "id": "t0c", "name": "Bash", "input": {"command": "ls"}},
+            ],
+            "usage": {"input_tokens": 200, "output_tokens": 80, "cache_read_input_tokens": 30, "cache_creation_input_tokens": 5},
+        },
+        "timestamp": "2026-02-06T22:01:00.000Z",
+    }))
+
+    # Now invoke a skill — this should finalize the overhead segment
+    for line in _make_skill_invocation("brainstorming", tool_use_id="t1"):
+        parser.process_line(line)
+
+    assert len(parser.overhead_segments) == 1
+    seg = parser.overhead_segments[0]
+    assert isinstance(seg, OverheadSegment)
+    assert seg.input_tokens == 500  # 300 + 200
+    assert seg.output_tokens == 180  # 100 + 80
+    assert seg.cache_read_tokens == 80  # 50 + 30
+    assert seg.cache_write_tokens == 15  # 10 + 5
+    assert seg.tool_count == 3  # Read, Grep, Bash
+    assert seg.timestamp == "2026-02-06T22:00:00.000Z"
+
+    # Existing overhead_tokens should still work
+    assert parser.overhead_tokens["input"] == 500
+    assert parser.overhead_tokens["output"] == 180
+
+
+def test_parser_overhead_segment_between_skills():
+    """Overhead gap between two skills creates a segment."""
+    parser = SessionParser()
+
+    # First skill
+    for line in _make_skill_invocation("brainstorming", tool_use_id="t1", timestamp="2026-02-06T22:00:00.000Z"):
+        parser.process_line(line)
+
+    # Clear active skill by having overhead work appear
+    # (In real usage, once a new skill starts the old one moves to used_skills,
+    #  but overhead happens when active_skill is set — we need to simulate
+    #  a gap where no skill is active. We do this by setting active_skill = None.)
+    parser.active_skill = None
+
+    # Overhead assistant message in the gap
+    parser.process_line(json.dumps({
+        "type": "assistant",
+        "message": {
+            "model": "claude-opus-4-6",
+            "content": [
+                {"type": "tool_use", "id": "t2a", "name": "Edit", "input": {"file_path": "/x", "old_string": "a", "new_string": "b"}},
+            ],
+            "usage": {"input_tokens": 400, "output_tokens": 150, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
+        },
+        "timestamp": "2026-02-06T22:15:00.000Z",
+    }))
+
+    # Second skill — should finalize the between-skills overhead segment
+    for line in _make_skill_invocation("writing-plans", tool_use_id="t3", timestamp="2026-02-06T22:30:00.000Z"):
+        parser.process_line(line)
+
+    assert len(parser.overhead_segments) == 1
+    seg = parser.overhead_segments[0]
+    assert seg.input_tokens == 400
+    assert seg.output_tokens == 150
+    assert seg.tool_count == 1
+    assert seg.timestamp == "2026-02-06T22:15:00.000Z"
+
+
+def test_parser_no_overhead_segment_when_skill_active():
+    """No overhead segment should be created while a skill is active."""
+    parser = SessionParser()
+
+    # Start a skill
+    for line in _make_skill_invocation("brainstorming", tool_use_id="t1"):
+        parser.process_line(line)
+
+    # Assistant messages while skill is active — should NOT create overhead segments
+    parser.process_line(json.dumps({
+        "type": "assistant",
+        "message": {
+            "model": "claude-opus-4-6",
+            "content": [
+                {"type": "tool_use", "id": "t2", "name": "Read", "input": {"file_path": "/bar"}},
+            ],
+            "usage": {"input_tokens": 500, "output_tokens": 200, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
+        },
+        "timestamp": "2026-02-06T22:20:00.000Z",
+    }))
+
+    assert len(parser.overhead_segments) == 0
+    assert parser._current_overhead is None

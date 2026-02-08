@@ -41,6 +41,18 @@ class SubagentEvent:
     model: str
 
 
+@dataclass
+class OverheadSegment:
+    """A segment of work done without any skill active."""
+    timestamp: str
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+    duration_ms: int = 0
+    tool_count: int = 0
+
+
 class SessionParser:
     """Parses JSONL lines and tracks skill state."""
 
@@ -55,6 +67,8 @@ class SessionParser:
         self.compactions: list[CompactionEvent] = []
         self.subagents: list[SubagentEvent] = []
         self.last_context_tokens: int = 0
+        self.overhead_segments: list[OverheadSegment] = []
+        self._current_overhead: OverheadSegment | None = None
 
     def process_line(self, line: str):
         try:
@@ -119,10 +133,24 @@ class SessionParser:
                     model=task_input.get("model", "inherit"),
                 ))
 
-        self._accumulate_tokens(usage, model)
+        # Count overhead tools when no skill is active
+        if not (self.skill_events and self.active_skill):
+            tool_count = sum(1 for item in content if item.get("type") == "tool_use")
+            if tool_count > 0:
+                timestamp = entry.get("timestamp", "")
+                if self._current_overhead is None:
+                    self._current_overhead = OverheadSegment(timestamp=timestamp)
+                self._current_overhead.tool_count += tool_count
+
+        self._accumulate_tokens(usage, model, entry.get("timestamp", ""))
 
     def _process_user(self, entry: dict):
         if entry.get("isMeta") and self._pending_skill:
+            # Finalize any current overhead segment before starting the skill
+            if self._current_overhead is not None:
+                self.overhead_segments.append(self._current_overhead)
+                self._current_overhead = None
+
             if self.active_skill:
                 self.used_skills.add(self.active_skill)
             skill = self._pending_skill
@@ -175,8 +203,11 @@ class SessionParser:
                 self.skill_events[-1].duration_ms += duration
             else:
                 self.overhead_duration_ms += duration
+                if self._current_overhead is None:
+                    self._current_overhead = OverheadSegment(timestamp=entry.get("timestamp", ""))
+                self._current_overhead.duration_ms += duration
 
-    def _accumulate_tokens(self, usage: dict, model: str):
+    def _accumulate_tokens(self, usage: dict, model: str, timestamp: str = ""):
         input_tok = usage.get("input_tokens", 0)
         output_tok = usage.get("output_tokens", 0)
         cache_read = usage.get("cache_read_input_tokens", 0)
@@ -195,6 +226,14 @@ class SessionParser:
             self.overhead_tokens["output"] += output_tok
             self.overhead_tokens["cache_read"] += cache_read
             self.overhead_tokens["cache_write"] += cache_write
+
+            # Also track on the current overhead segment
+            if self._current_overhead is None:
+                self._current_overhead = OverheadSegment(timestamp=timestamp)
+            self._current_overhead.input_tokens += input_tok
+            self._current_overhead.output_tokens += output_tok
+            self._current_overhead.cache_read_tokens += cache_read
+            self._current_overhead.cache_write_tokens += cache_write
 
 
 def _cwd_to_project_dir_name(cwd: str) -> str:
