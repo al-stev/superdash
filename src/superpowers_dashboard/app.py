@@ -200,7 +200,15 @@ class SuperpowersDashboard(App):
         total_input = sum(e.input_tokens for e in self.parser.skill_events) + self.parser.overhead_tokens["input"]
         total_output = sum(e.output_tokens for e in self.parser.skill_events) + self.parser.overhead_tokens["output"]
         total_cache_read = sum(e.cache_read_tokens for e in self.parser.skill_events) + self.parser.overhead_tokens["cache_read"]
-        total_cost = sum(e["cost"] for e in entries)
+        overhead_cost = calculate_cost(
+            "claude-opus-4-6",
+            self.parser.overhead_tokens["input"],
+            self.parser.overhead_tokens["output"],
+            self.parser.overhead_tokens["cache_read"],
+            self.parser.overhead_tokens.get("cache_write", 0),
+            pricing,
+        )
+        total_cost = sum(e["cost"] for e in entries) + overhead_cost
 
         stats_widget = self.query_one("#stats", StatsWidget)
         summary = stats_widget.format_summary(total_cost, total_input, total_output, total_cache_read)
