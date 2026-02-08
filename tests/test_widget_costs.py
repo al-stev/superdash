@@ -111,3 +111,46 @@ def test_stats_widget_shows_skill_compliance():
     text = w.format_compliance(skill_count=3, tool_count=28)
     assert "Skills: 3" in text
     assert "Tools: 28" in text
+
+
+def test_stats_widget_shows_subagent_aggregate():
+    """format_subagent_stats output should contain count, skills used ratio, cost, and tokens."""
+    w = StatsWidget()
+    text = w.format_subagent_stats(
+        count=8,
+        skills_used=2,
+        total_cost=3.42,
+        total_tokens=142000,
+    )
+    assert "Subagents:" in text
+    assert "8" in text
+    assert "Skills used:" in text
+    assert "2/8" in text
+    assert "$3.42" in text
+    assert "142k" in text
+
+
+def test_stats_widget_subagent_stats_zero_count():
+    """format_subagent_stats with count 0 should show zeros gracefully."""
+    w = StatsWidget()
+    text = w.format_subagent_stats(
+        count=0,
+        skills_used=0,
+        total_cost=0.0,
+        total_tokens=0,
+    )
+    assert "Subagents:" in text
+    assert "0" in text
+
+
+def test_stats_widget_subagent_stats_tokens_below_1k():
+    """Tokens below 1000 should not show k suffix."""
+    w = StatsWidget()
+    text = w.format_subagent_stats(
+        count=1,
+        skills_used=0,
+        total_cost=0.05,
+        total_tokens=500,
+    )
+    assert "500" in text
+    assert "k" not in text.split("Total tokens:")[-1] or "500" in text

@@ -296,6 +296,20 @@ class SuperpowersDashboard(App):
             name = e["skill_name"]
             per_skill[name] = per_skill.get(name, 0) + e["cost"]
         per_skill_list = [{"name": k, "cost": v} for k, v in sorted(per_skill.items(), key=lambda x: -x[1])]
+        # Compute per-subagent costs and collect details for aggregation
+        subagent_details_with_cost = []
+        for s in self.parser.subagents:
+            if s.detail is not None:
+                detail = s.detail
+                detail_cost = calculate_cost(
+                    s.model if s.model and s.model != "inherit" else "claude-opus-4-6",
+                    detail.input_tokens, detail.output_tokens,
+                    detail.cache_read_tokens, detail.cache_write_tokens,
+                    pricing,
+                )
+                detail._cost = detail_cost
+                subagent_details_with_cost.append(detail)
+
         context_tokens = self.parser.last_context_tokens
         stats_widget.update_stats(
             summary, per_skill_list,
@@ -305,6 +319,7 @@ class SuperpowersDashboard(App):
             context_tokens=context_tokens,
             session_count=self.parser.session_count,
             skill_count=len(self.parser.skill_events),
+            subagent_details=subagent_details_with_cost or None,
         )
 
         # Build chronological activity feed from all event types
@@ -326,7 +341,28 @@ class SuperpowersDashboard(App):
             elif kind == "compaction":
                 activity.add_compaction(data.timestamp, data.kind, data.pre_tokens)
             elif kind == "subagent":
-                activity.add_subagent(data.timestamp, data.description, data.subagent_type, data.model)
+                if data.detail is not None:
+                    detail = data.detail
+                    detail_cost = calculate_cost(
+                        data.model if data.model and data.model != "inherit" else "claude-opus-4-6",
+                        detail.input_tokens, detail.output_tokens,
+                        detail.cache_read_tokens, detail.cache_write_tokens,
+                        pricing,
+                    )
+                    activity.add_subagent_detail(
+                        timestamp=data.timestamp,
+                        description=data.description,
+                        subagent_type=data.subagent_type,
+                        model=data.model,
+                        tool_counts=detail.tool_counts,
+                        input_tokens=detail.input_tokens,
+                        output_tokens=detail.output_tokens,
+                        cost=detail_cost,
+                        skills_invoked=detail.skills_invoked,
+                        status="complete",
+                    )
+                else:
+                    activity.add_subagent(data.timestamp, data.description, data.subagent_type, data.model)
         self._last_activity_count = len(all_activity)
 
         # Update header with session info and total cost

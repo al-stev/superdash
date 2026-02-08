@@ -70,7 +70,32 @@ class StatsWidget(Static):
     def format_compliance(self, skill_count: int, tool_count: int) -> str:
         return f"  Skills: {skill_count}  |  Tools: {tool_count}"
 
-    def update_stats(self, summary: str, per_skill: list[dict], tool_counts: dict[str, int] | None = None, subagent_count: int = 0, compactions: list | None = None, context_tokens: int = 0, session_count: int = 1, skill_count: int = 0):
+    def format_subagent_stats(self, count: int, skills_used: int, total_cost: float, total_tokens: int) -> str:
+        """Format aggregate subagent metrics.
+
+        Example output:
+          Subagents:       8
+            Skills used:   2/8
+            Total cost:    $3.42
+            Total tokens:  142k
+        """
+        if total_tokens >= 1000:
+            tok_value = total_tokens / 1000
+            tok_formatted = f"{tok_value:.1f}"
+            if tok_formatted.endswith(".0"):
+                tok_formatted = tok_formatted[:-2]
+            tok_str = f"{tok_formatted}k"
+        else:
+            tok_str = str(total_tokens)
+
+        return (
+            f"  Subagents:       {count}\n"
+            f"    Skills used:   {skills_used}/{count}\n"
+            f"    Total cost:    ${total_cost:.2f}\n"
+            f"    Total tokens:  {tok_str}"
+        )
+
+    def update_stats(self, summary: str, per_skill: list[dict], tool_counts: dict[str, int] | None = None, subagent_count: int = 0, compactions: list | None = None, context_tokens: int = 0, session_count: int = 1, skill_count: int = 0, subagent_details: list | None = None):
         parts = [summary, "  " + "\u2500" * 38]
 
         # Context window usage right after summary
@@ -102,8 +127,16 @@ class StatsWidget(Static):
             for name, count in sorted_tools[:8]:
                 parts.append(f"    {name:<20} {count:>4}")
 
-        # Subagent count as its own section
-        if subagent_count > 0:
+        # Subagent stats section
+        if subagent_details:
+            parts.append("")
+            parts.append("  " + "\u2500" * 38)
+            agg_count = len(subagent_details)
+            agg_skills = sum(1 for d in subagent_details if d.skills_invoked)
+            agg_cost = sum(getattr(d, "_cost", 0.0) for d in subagent_details)
+            agg_tokens = sum(d.input_tokens + d.output_tokens for d in subagent_details)
+            parts.append(self.format_subagent_stats(agg_count, agg_skills, agg_cost, agg_tokens))
+        elif subagent_count > 0:
             parts.append("")
             parts.append("  " + "\u2500" * 38)
             parts.append(f"  Subagents: {subagent_count}")
