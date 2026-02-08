@@ -15,6 +15,7 @@ from superpowers_dashboard.widgets.skill_list import SkillListWidget
 from superpowers_dashboard.widgets.workflow import WorkflowWidget
 from superpowers_dashboard.widgets.costs_panel import StatsWidget
 from superpowers_dashboard.widgets.activity import ActivityLogWidget
+from superpowers_dashboard.widgets.hooks_panel import HooksWidget, load_all_hooks
 
 
 TERMINAL_THEME = Theme(
@@ -84,11 +85,13 @@ class SuperpowersDashboard(App):
     Screen { background: #000000; }
     * { background: transparent; }
     #top-row { height: 1fr; }
-    #bottom-row { height: 1fr; }
-    #skills-panel { width: 45; border: tall $border; }
-    #workflow-panel { width: 1fr; border: tall $border; }
-    #stats-panel { width: 45; border: tall $border; }
-    #activity-panel { width: 1fr; border: tall $border; }
+    #left-column { width: 45; }
+    #right-column { width: 1fr; }
+    #skills-panel { height: auto; border: tall $border; }
+    #hooks-panel { height: auto; border: tall $border; }
+    #stats-panel { height: 1fr; border: tall $border; }
+    #workflow-panel { height: 1fr; border: tall $border; }
+    #activity-panel { height: 1fr; border: tall $border; }
     .panel-title { text-style: bold; padding: 0 1; }
     Header { background: #000000; color: $foreground; }
     Footer { background: #000000; }
@@ -116,25 +119,38 @@ class SuperpowersDashboard(App):
     def compose(self) -> ComposeResult:
         yield Header()
         with Horizontal(id="top-row"):
-            with Vertical(id="skills-panel"):
-                yield Static("SKILLS", classes="panel-title")
-                yield SkillListWidget(id="skill-list")
-            with VerticalScroll(id="workflow-panel"):
-                yield Static("WORKFLOW", classes="panel-title")
-                yield WorkflowWidget(id="workflow")
-        with Horizontal(id="bottom-row"):
-            with VerticalScroll(id="stats-panel"):
-                yield Static("STATS", classes="panel-title")
-                yield StatsWidget(id="stats")
-            with Vertical(id="activity-panel"):
-                yield Static("ACTIVITY LOG", classes="panel-title")
-                yield ActivityLogWidget(id="activity")
+            with Vertical(id="left-column"):
+                with Vertical(id="skills-panel"):
+                    yield Static("SKILLS", classes="panel-title")
+                    yield SkillListWidget(id="skill-list")
+                with Vertical(id="hooks-panel"):
+                    yield Static("HOOKS", classes="panel-title")
+                    yield HooksWidget(id="hooks")
+                with VerticalScroll(id="stats-panel"):
+                    yield Static("STATS", classes="panel-title")
+                    yield StatsWidget(id="stats")
+            with Vertical(id="right-column"):
+                with VerticalScroll(id="workflow-panel"):
+                    yield Static("WORKFLOW", classes="panel-title")
+                    yield WorkflowWidget(id="workflow")
+                with Vertical(id="activity-panel"):
+                    yield Static("ACTIVITY LOG", classes="panel-title")
+                    yield ActivityLogWidget(id="activity")
         yield Footer()
 
     def on_mount(self):
         self.register_theme(TERMINAL_THEME)
         self.register_theme(MAINFRAME_THEME)
         self.theme = "terminal"
+
+        # Load hooks configuration
+        plugin_dirs = []
+        skills_dir = _find_skills_dir()
+        if skills_dir:
+            plugin_dirs.append(skills_dir.parent)  # plugin root (e.g. superpowers/4.2.0/)
+        hooks_widget = self.query_one("#hooks", HooksWidget)
+        hooks_data = load_all_hooks(plugin_dirs=plugin_dirs)
+        hooks_widget.update_hooks(hooks_data)
 
         # Find all sessions for this project and parse them
         project_sessions = find_project_sessions(project_cwd=self._project_dir)
