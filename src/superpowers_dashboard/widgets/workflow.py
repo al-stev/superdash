@@ -41,14 +41,37 @@ class WorkflowWidget(Static):
         result += f"   \u2503  {bar}  {dur_str}{active_marker}"
         return result
 
+    def format_overhead(self, input_tokens: int, output_tokens: int, cost: float, duration_seconds: float, tool_summary: str) -> str:
+        """Render an overhead segment (work done without any skill active)."""
+        total_tokens = input_tokens + output_tokens
+        tok_str = format_tokens(total_tokens)
+        dur_str = format_duration_minutes(duration_seconds)
+        result = f"   \u2500\u2500 no skill \u2500\u2500        {tok_str:>6} tok  ${cost:.2f}\n"
+        if tool_summary:
+            result += f"   \u2503  {tool_summary}\n"
+        result += f"   \u2503  {dur_str}"
+        return result
+
     def update_timeline(self, entries: list[dict]):
         if not entries:
             self.update("  No skills invoked yet.")
             return
         max_cost = max(e.get("cost", 0) for e in entries)
         parts = []
-        for i, e in enumerate(entries):
-            text = self.format_entry(index=i + 1, skill_name=e["skill_name"], args=e.get("args", ""), total_tokens=e.get("total_tokens", 0), cost=e.get("cost", 0), duration_seconds=e.get("duration_seconds", 0), max_cost=max_cost, is_active=e.get("is_active", False))
+        skill_index = 0
+        for e in entries:
+            kind = e.get("kind", "skill")
+            if kind == "overhead":
+                text = self.format_overhead(
+                    input_tokens=e.get("input_tokens", 0),
+                    output_tokens=e.get("output_tokens", 0),
+                    cost=e.get("cost", 0),
+                    duration_seconds=e.get("duration_seconds", 0),
+                    tool_summary=e.get("tool_summary", ""),
+                )
+            else:
+                skill_index += 1
+                text = self.format_entry(index=skill_index, skill_name=e["skill_name"], args=e.get("args", ""), total_tokens=e.get("total_tokens", 0), cost=e.get("cost", 0), duration_seconds=e.get("duration_seconds", 0), max_cost=max_cost, is_active=e.get("is_active", False))
             parts.append(text)
         separator = "\n   \u25bc\n"
         self.update(separator.join(parts))

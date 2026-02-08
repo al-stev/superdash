@@ -177,7 +177,7 @@ class SuperpowersDashboard(App):
         skill_list = self.query_one("#skill-list", SkillListWidget)
         skill_list.update_skills(all_skill_names, self.parser.active_skill, self.parser.used_skills)
 
-        # Build workflow entries
+        # Build workflow entries (skills)
         entries = []
         for i, event in enumerate(self.parser.skill_events):
             total_tokens = event.input_tokens + event.output_tokens + event.cache_read_tokens + event.cache_write_tokens
@@ -185,6 +185,8 @@ class SuperpowersDashboard(App):
             model = next(iter(event.models), "claude-opus-4-6")
             cost = calculate_cost(model, event.input_tokens, event.output_tokens, event.cache_read_tokens, event.cache_write_tokens, pricing)
             entries.append({
+                "kind": "skill",
+                "timestamp": event.timestamp,
                 "skill_name": event.skill_name,
                 "args": event.args,
                 "total_tokens": total_tokens,
@@ -192,6 +194,28 @@ class SuperpowersDashboard(App):
                 "duration_seconds": event.duration_ms / 1000.0,
                 "is_active": event.skill_name == self.parser.active_skill and i == len(self.parser.skill_events) - 1,
             })
+
+        # Add overhead segments
+        for seg in self.parser.overhead_segments:
+            seg_cost = calculate_cost(
+                "claude-opus-4-6",
+                seg.input_tokens, seg.output_tokens,
+                seg.cache_read_tokens, seg.cache_write_tokens,
+                pricing,
+            )
+            tool_summary = f"tools({seg.tool_count})" if seg.tool_count else ""
+            entries.append({
+                "kind": "overhead",
+                "timestamp": seg.timestamp,
+                "input_tokens": seg.input_tokens,
+                "output_tokens": seg.output_tokens,
+                "cost": seg_cost,
+                "duration_seconds": seg.duration_ms / 1000.0,
+                "tool_summary": tool_summary,
+            })
+
+        # Sort all entries by timestamp
+        entries.sort(key=lambda e: e.get("timestamp", ""))
 
         workflow = self.query_one("#workflow", WorkflowWidget)
         workflow.update_timeline(entries)
@@ -208,14 +232,15 @@ class SuperpowersDashboard(App):
             self.parser.overhead_tokens.get("cache_write", 0),
             pricing,
         )
-        total_cost = sum(e["cost"] for e in entries) + overhead_cost
+        skill_entries = [e for e in entries if e.get("kind", "skill") == "skill"]
+        total_cost = sum(e["cost"] for e in skill_entries) + overhead_cost
 
         stats_widget = self.query_one("#stats", StatsWidget)
         summary = stats_widget.format_summary(total_cost, total_input, total_output, total_cache_read)
 
         # Per-skill aggregation
         per_skill: dict[str, float] = {}
-        for e in entries:
+        for e in skill_entries:
             name = e["skill_name"]
             per_skill[name] = per_skill.get(name, 0) + e["cost"]
         per_skill_list = [{"name": k, "cost": v} for k, v in sorted(per_skill.items(), key=lambda x: -x[1])]
