@@ -69,6 +69,7 @@ class SessionParser:
         self.last_context_tokens: int = 0
         self.overhead_segments: list[OverheadSegment] = []
         self._current_overhead: OverheadSegment | None = None
+        self.session_count: int = 1
 
     def process_line(self, line: str):
         try:

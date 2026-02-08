@@ -403,3 +403,34 @@ def test_parser_no_overhead_segment_when_skill_active():
 
     assert len(parser.overhead_segments) == 0
     assert parser._current_overhead is None
+
+
+def test_parser_has_session_count():
+    """SessionParser starts with session_count = 1."""
+    parser = SessionParser()
+    assert parser.session_count == 1
+
+
+def test_find_project_sessions_excludes_subagents(tmp_path):
+    """Subagent JSONL files in a subagents/ subdirectory are NOT included."""
+    from superpowers_dashboard.watcher import find_project_sessions
+
+    project_dir = tmp_path / "-Users-al-myproject"
+    project_dir.mkdir()
+
+    # Regular session file
+    session = project_dir / "session1.jsonl"
+    session.write_text('{"type":"user"}\n')
+
+    # Subagent session file inside a subagents/ subdirectory
+    subagents_dir = project_dir / "subagents"
+    subagents_dir.mkdir()
+    subagent_session = subagents_dir / "subagent1.jsonl"
+    subagent_session.write_text('{"type":"user"}\n')
+
+    sessions = find_project_sessions(
+        base_dir=tmp_path,
+        project_cwd="/Users/al/myproject",
+    )
+    assert len(sessions) == 1
+    assert sessions[0] == session

@@ -156,7 +156,20 @@ class SuperpowersDashboard(App):
                     self._file_pos = f.tell()
 
     def _poll_session(self):
-        """Check for new lines in the session file."""
+        """Check for new lines in the session file, and detect new sessions."""
+        # Check for new session files
+        current_sessions = find_project_sessions(project_cwd=self._project_dir)
+        if current_sessions and current_sessions[-1] != self._session_path:
+            new_path = current_sessions[-1]
+            with open(new_path) as f:
+                for line in f:
+                    self.parser.process_line(line.strip())
+                self._file_pos = f.tell()
+            self._session_path = new_path
+            self.parser.session_count += 1
+            self._refresh_ui()
+            return
+
         if not self._session_path or not self._session_path.exists():
             return
         with open(self._session_path) as f:
