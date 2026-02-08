@@ -86,6 +86,7 @@ class SessionParser:
         self.overhead_segments: list[OverheadSegment] = []
         self._current_overhead: OverheadSegment | None = None
         self.session_count: int = 1
+        self.agent_id_map: dict[str, str] = {}  # tool_use_id -> agent_id
 
     def process_line(self, line: str):
         try:
@@ -163,6 +164,25 @@ class SessionParser:
         self._accumulate_tokens(usage, model, entry.get("timestamp", ""))
 
     def _process_user(self, entry: dict):
+        # Extract agent IDs from tool_result entries
+        message = entry.get("message", {})
+        content = message.get("content", [])
+        if isinstance(content, list):
+            for item in content:
+                if isinstance(item, dict) and item.get("type") == "tool_result":
+                    tool_use_id = item.get("tool_use_id", "")
+                    result_content = item.get("content", "")
+                    result_text = ""
+                    if isinstance(result_content, str):
+                        result_text = result_content
+                    elif isinstance(result_content, list):
+                        result_text = " ".join(
+                            c.get("text", "") for c in result_content if isinstance(c, dict)
+                        )
+                    agent_id = extract_agent_id(result_text)
+                    if agent_id and tool_use_id:
+                        self.agent_id_map[tool_use_id] = agent_id
+
         if entry.get("isMeta") and self._pending_skill:
             # Finalize any current overhead segment before starting the skill
             if self._current_overhead is not None:

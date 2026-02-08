@@ -564,3 +564,63 @@ def test_find_subagent_file_missing(tmp_path):
     subagents_dir = session_dir / "subagents"
     subagents_dir.mkdir(parents=True)
     assert find_subagent_file(tmp_path, "session456", "xyz789") is None
+
+
+def test_parser_extracts_agent_id_from_tool_result():
+    """Process a user entry with a tool_result containing agentId text (string content).
+
+    The parser should populate agent_id_map with tool_use_id -> agent_id.
+    """
+    parser = SessionParser()
+    # First, create a subagent dispatch so we have a tool_use_id
+    parser.process_line(json.dumps({
+        "type": "assistant",
+        "message": {
+            "model": "claude-opus-4-6",
+            "content": [{"type": "tool_use", "id": "toolu_task1", "name": "Task", "input": {
+                "description": "Implement feature X",
+                "subagent_type": "general-purpose",
+                "model": "sonnet",
+            }}],
+            "usage": {"input_tokens": 10, "output_tokens": 5, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
+        },
+        "timestamp": "2026-02-07T10:00:00.000Z",
+    }))
+    # Now process the user entry containing the tool_result with agentId
+    parser.process_line(json.dumps({
+        "type": "user",
+        "message": {
+            "role": "user",
+            "content": [{
+                "type": "tool_result",
+                "tool_use_id": "toolu_task1",
+                "content": "agentId: a82030d (for resuming to continue this agent's work if needed)\nTask completed successfully.",
+            }],
+        },
+        "timestamp": "2026-02-07T10:05:00.000Z",
+    }))
+    assert parser.agent_id_map == {"toolu_task1": "a82030d"}
+
+
+def test_parser_handles_tool_result_list_content():
+    """Process a tool_result where content is a list of dicts with text.
+
+    The parser should still extract the agent_id from the joined text.
+    """
+    parser = SessionParser()
+    parser.process_line(json.dumps({
+        "type": "user",
+        "message": {
+            "role": "user",
+            "content": [{
+                "type": "tool_result",
+                "tool_use_id": "toolu_task2",
+                "content": [
+                    {"type": "text", "text": "Task result: success."},
+                    {"type": "text", "text": "agentId: b93141e (for resuming)"},
+                ],
+            }],
+        },
+        "timestamp": "2026-02-07T10:10:00.000Z",
+    }))
+    assert parser.agent_id_map == {"toolu_task2": "b93141e"}

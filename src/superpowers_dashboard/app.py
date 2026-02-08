@@ -9,7 +9,10 @@ from textual.widgets import Header, Footer, Static
 
 from superpowers_dashboard.config import load_config
 from superpowers_dashboard.registry import SkillRegistry
-from superpowers_dashboard.watcher import SessionParser, find_project_sessions
+from superpowers_dashboard.watcher import (
+    SessionParser, find_project_sessions,
+    find_subagent_file, parse_subagent_transcript,
+)
 from superpowers_dashboard.costs import calculate_cost
 from superpowers_dashboard.widgets.skill_list import SkillListWidget
 from superpowers_dashboard.widgets.workflow import WorkflowWidget
@@ -197,8 +200,28 @@ class SuperpowersDashboard(App):
                 self.parser.process_line(line.strip())
             self._refresh_ui()
 
+    def _resolve_subagent_details(self):
+        """Parse transcript files for subagents that lack detail."""
+        if not self._session_path:
+            return
+        project_dir = self._session_path.parent
+        session_id = self._session_path.stem
+
+        for event in self.parser.subagents:
+            if event.detail is not None:
+                continue
+            if not event.tool_use_id:
+                continue
+            agent_id = self.parser.agent_id_map.get(event.tool_use_id)
+            if not agent_id:
+                continue
+            subagent_path = find_subagent_file(project_dir, session_id, agent_id)
+            if subagent_path:
+                event.detail = parse_subagent_transcript(subagent_path)
+
     def _refresh_ui(self):
         """Update all widgets from parser state."""
+        self._resolve_subagent_details()
         all_skill_names = sorted(self.registry.skills.keys())
         pricing = self.config["pricing"]
 
