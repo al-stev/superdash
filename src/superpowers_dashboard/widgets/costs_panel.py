@@ -133,7 +133,7 @@ class StatsWidget(Static):
             parts.append("  " + "\u2500" * 38)
             agg_count = len(subagent_details)
             agg_skills = sum(1 for d in subagent_details if d.skills_invoked)
-            agg_cost = sum(getattr(d, "_cost", 0.0) for d in subagent_details)
+            agg_cost = sum(d.cost for d in subagent_details)
             agg_tokens = sum(d.input_tokens + d.output_tokens for d in subagent_details)
             parts.append(self.format_subagent_stats(agg_count, agg_skills, agg_cost, agg_tokens))
         elif subagent_count > 0:

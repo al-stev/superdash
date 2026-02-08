@@ -13,7 +13,7 @@ from superpowers_dashboard.watcher import (
     SessionParser, find_project_sessions,
     find_subagent_file, parse_subagent_transcript,
 )
-from superpowers_dashboard.costs import calculate_cost
+from superpowers_dashboard.costs import calculate_cost, resolve_model
 from superpowers_dashboard.widgets.skill_list import SkillListWidget
 from superpowers_dashboard.widgets.workflow import WorkflowWidget
 from superpowers_dashboard.widgets.costs_panel import StatsWidget
@@ -201,14 +201,24 @@ class SuperpowersDashboard(App):
             self._refresh_ui()
 
     def _resolve_subagent_details(self):
-        """Parse transcript files for subagents that lack detail."""
+        """Parse transcript files for subagents that lack detail, and compute costs."""
         if not self._session_path:
             return
         project_dir = self._session_path.parent
         session_id = self._session_path.stem
+        pricing = self.config["pricing"]
 
         for event in self.parser.subagents:
             if event.detail is not None:
+                # Ensure cost is computed even if detail was already parsed
+                if event.detail.cost == 0.0:
+                    detail = event.detail
+                    detail.cost = calculate_cost(
+                        resolve_model(event.model),
+                        detail.input_tokens, detail.output_tokens,
+                        detail.cache_read_tokens, detail.cache_write_tokens,
+                        pricing,
+                    )
                 continue
             if not event.tool_use_id:
                 continue
@@ -217,7 +227,14 @@ class SuperpowersDashboard(App):
                 continue
             subagent_path = find_subagent_file(project_dir, session_id, agent_id)
             if subagent_path:
-                event.detail = parse_subagent_transcript(subagent_path)
+                detail = parse_subagent_transcript(subagent_path)
+                detail.cost = calculate_cost(
+                    resolve_model(event.model),
+                    detail.input_tokens, detail.output_tokens,
+                    detail.cache_read_tokens, detail.cache_write_tokens,
+                    pricing,
+                )
+                event.detail = detail
 
     def _refresh_ui(self):
         """Update all widgets from parser state."""
@@ -271,18 +288,12 @@ class SuperpowersDashboard(App):
             if s.detail is not None:
                 detail = s.detail
                 sa_total = detail.input_tokens + detail.output_tokens + detail.cache_read_tokens + detail.cache_write_tokens
-                sa_cost = calculate_cost(
-                    s.model if s.model and s.model != "inherit" else "claude-opus-4-6",
-                    detail.input_tokens, detail.output_tokens,
-                    detail.cache_read_tokens, detail.cache_write_tokens,
-                    pricing,
-                )
                 entries.append({
                     "kind": "subagent",
                     "timestamp": s.timestamp,
                     "description": s.description,
                     "total_tokens": sa_total,
-                    "cost": sa_cost,
+                    "cost": detail.cost,
                     "skills_invoked": detail.skills_invoked,
                 })
 
@@ -316,19 +327,8 @@ class SuperpowersDashboard(App):
             name = e["skill_name"]
             per_skill[name] = per_skill.get(name, 0) + e["cost"]
         per_skill_list = [{"name": k, "cost": v} for k, v in sorted(per_skill.items(), key=lambda x: -x[1])]
-        # Compute per-subagent costs and collect details for aggregation
-        subagent_details_with_cost = []
-        for s in self.parser.subagents:
-            if s.detail is not None:
-                detail = s.detail
-                detail_cost = calculate_cost(
-                    s.model if s.model and s.model != "inherit" else "claude-opus-4-6",
-                    detail.input_tokens, detail.output_tokens,
-                    detail.cache_read_tokens, detail.cache_write_tokens,
-                    pricing,
-                )
-                detail._cost = detail_cost
-                subagent_details_with_cost.append(detail)
+        # Collect subagent details for stats aggregation (costs already computed)
+        subagent_details_list = [s.detail for s in self.parser.subagents if s.detail is not None]
 
         context_tokens = self.parser.last_context_tokens
         stats_widget.update_stats(
@@ -339,7 +339,7 @@ class SuperpowersDashboard(App):
             context_tokens=context_tokens,
             session_count=self.parser.session_count,
             skill_count=len(self.parser.skill_events),
-            subagent_details=subagent_details_with_cost or None,
+            subagent_details=subagent_details_list or None,
         )
 
         # Build chronological activity feed from all event types
@@ -365,12 +365,6 @@ class SuperpowersDashboard(App):
             elif kind == "subagent":
                 if data.detail is not None:
                     detail = data.detail
-                    detail_cost = calculate_cost(
-                        data.model if data.model and data.model != "inherit" else "claude-opus-4-6",
-                        detail.input_tokens, detail.output_tokens,
-                        detail.cache_read_tokens, detail.cache_write_tokens,
-                        pricing,
-                    )
                     activity.add_subagent_detail(
                         timestamp=data.timestamp,
                         description=data.description,
@@ -379,7 +373,7 @@ class SuperpowersDashboard(App):
                         tool_counts=detail.tool_counts,
                         input_tokens=detail.input_tokens,
                         output_tokens=detail.output_tokens,
-                        cost=detail_cost,
+                        cost=detail.cost,
                         skills_invoked=detail.skills_invoked,
                         status="complete",
                     )

@@ -1,5 +1,5 @@
 # tests/test_costs.py
-from superpowers_dashboard.costs import calculate_cost
+from superpowers_dashboard.costs import calculate_cost, resolve_model
 from superpowers_dashboard.config import DEFAULT_PRICING
 
 
@@ -37,3 +37,19 @@ def test_calculate_cost_unknown_model():
         pricing=DEFAULT_PRICING,
     )
     assert cost == 0.0
+
+
+def test_resolve_model_short_names():
+    assert resolve_model("opus") == "claude-opus-4-6"
+    assert resolve_model("sonnet") == "claude-sonnet-4-5-20250929"
+    assert resolve_model("haiku") == "claude-haiku-4-5-20251001"
+
+
+def test_resolve_model_full_names_passthrough():
+    assert resolve_model("claude-opus-4-6") == "claude-opus-4-6"
+    assert resolve_model("claude-sonnet-4-5-20250929") == "claude-sonnet-4-5-20250929"
+
+
+def test_resolve_model_inherit_and_empty():
+    assert resolve_model("inherit") == "claude-opus-4-6"
+    assert resolve_model("") == "claude-opus-4-6"

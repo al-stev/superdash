@@ -1,5 +1,19 @@
 """Cost calculation from token counts and pricing config."""
 
+# Map short model names used in subagent dispatches to full pricing keys
+MODEL_ALIASES = {
+    "opus": "claude-opus-4-6",
+    "sonnet": "claude-sonnet-4-5-20250929",
+    "haiku": "claude-haiku-4-5-20251001",
+}
+
+
+def resolve_model(model: str) -> str:
+    """Resolve a model name to its full pricing key."""
+    if not model or model == "inherit":
+        return "claude-opus-4-6"
+    return MODEL_ALIASES.get(model, model)
+
 
 def calculate_cost(
     model: str,

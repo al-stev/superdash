@@ -55,6 +55,7 @@ class SubagentDetail:
     cache_read_tokens: int = 0
     cache_write_tokens: int = 0
     duration_ms: int = 0
+    cost: float = 0.0
 
 
 @dataclass
