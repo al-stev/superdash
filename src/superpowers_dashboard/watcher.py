@@ -1,5 +1,6 @@
 """JSONL session watcher and parser for skill invocation detection."""
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -39,6 +40,21 @@ class SubagentEvent:
     description: str
     subagent_type: str
     model: str
+    tool_use_id: str = ""
+    detail: "SubagentDetail | None" = None
+
+
+@dataclass
+class SubagentDetail:
+    """Parsed metrics from a subagent's JSONL transcript."""
+    agent_id: str
+    skills_invoked: list[str] = field(default_factory=list)
+    tool_counts: dict[str, int] = field(default_factory=dict)
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+    duration_ms: int = 0
 
 
 @dataclass
@@ -132,6 +148,7 @@ class SessionParser:
                     description=task_input.get("description", ""),
                     subagent_type=task_input.get("subagent_type", ""),
                     model=task_input.get("model", "inherit"),
+                    tool_use_id=item.get("id", ""),
                 ))
 
         # Count overhead tools when no skill is active
@@ -235,6 +252,79 @@ class SessionParser:
             self._current_overhead.output_tokens += output_tok
             self._current_overhead.cache_read_tokens += cache_read
             self._current_overhead.cache_write_tokens += cache_write
+
+
+def extract_agent_id(text: str) -> str | None:
+    """Extract agentId from a Task tool_result text.
+
+    The format is: agentId: a82030d (for resuming ...)
+    """
+    m = re.search(r"agentId:\s*([a-f0-9]+)", text)
+    return m.group(1) if m else None
+
+
+def parse_subagent_transcript(path: Path) -> SubagentDetail:
+    """Parse a subagent JSONL file and extract metrics.
+
+    For each line:
+    - assistant messages: accumulate tokens from usage, count tools, extract skill names
+    - system messages with subtype turn_duration: accumulate duration_ms
+    """
+    stem = path.stem  # e.g. "agent-abc123"
+    agent_id = stem.removeprefix("agent-")
+
+    detail = SubagentDetail(agent_id=agent_id)
+
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            entry_type = entry.get("type")
+
+            if entry_type == "assistant":
+                message = entry.get("message", {})
+                usage = message.get("usage", {})
+                content = message.get("content", [])
+
+                detail.input_tokens += usage.get("input_tokens", 0)
+                detail.output_tokens += usage.get("output_tokens", 0)
+                detail.cache_read_tokens += usage.get("cache_read_input_tokens", 0)
+                detail.cache_write_tokens += usage.get("cache_creation_input_tokens", 0)
+
+                for item in content:
+                    if item.get("type") != "tool_use":
+                        continue
+                    tool_name = item.get("name", "")
+                    if tool_name:
+                        detail.tool_counts[tool_name] = detail.tool_counts.get(tool_name, 0) + 1
+                    if tool_name == "Skill":
+                        skill_input = item.get("input", {})
+                        skill_full = skill_input.get("skill", "")
+                        skill_name = skill_full.split(":")[-1] if ":" in skill_full else skill_full
+                        detail.skills_invoked.append(skill_name)
+
+            elif entry_type == "system":
+                subtype = entry.get("subtype", "")
+                if subtype == "turn_duration":
+                    detail.duration_ms += entry.get("durationMs", 0)
+
+    return detail
+
+
+def find_subagent_file(project_dir: Path, session_id: str, agent_id: str) -> Path | None:
+    """Find a subagent's JSONL transcript file.
+
+    Constructs the path project_dir / session_id / "subagents" / f"agent-{agent_id}.jsonl"
+    and returns it if it exists, None otherwise.
+    """
+    path = project_dir / session_id / "subagents" / f"agent-{agent_id}.jsonl"
+    return path if path.exists() else None
 
 
 def _cwd_to_project_dir_name(cwd: str) -> str:

@@ -1,7 +1,11 @@
 # tests/test_watcher.py
 import json
 from pathlib import Path
-from superpowers_dashboard.watcher import SessionParser, SkillEvent, CompactionEvent, OverheadSegment
+from superpowers_dashboard.watcher import (
+    SessionParser, SkillEvent, CompactionEvent, OverheadSegment,
+    SubagentDetail, SubagentEvent,
+    extract_agent_id, parse_subagent_transcript, find_subagent_file,
+)
 
 
 def _make_skill_invocation(skill_name: str, args: str = "", timestamp: str = "2026-02-06T22:16:50.558Z", tool_use_id: str = "toolu_abc") -> list[str]:
@@ -434,3 +438,129 @@ def test_find_project_sessions_excludes_subagents(tmp_path):
     )
     assert len(sessions) == 1
     assert sessions[0] == session
+
+
+def test_parse_subagent_transcript(tmp_path):
+    """Parse a subagent JSONL file and verify tokens, tool_counts, and duration."""
+    transcript = tmp_path / "agent-abc123.jsonl"
+    lines = []
+    # Assistant message with two tool_use blocks and usage
+    lines.append(json.dumps({
+        "type": "assistant",
+        "message": {
+            "model": "claude-sonnet-4-20250514",
+            "content": [
+                {"type": "tool_use", "id": "t1", "name": "Read", "input": {"file_path": "/foo"}},
+                {"type": "tool_use", "id": "t2", "name": "Edit", "input": {"file_path": "/foo", "old_string": "a", "new_string": "b"}},
+            ],
+            "usage": {"input_tokens": 1000, "output_tokens": 200, "cache_read_input_tokens": 500, "cache_creation_input_tokens": 50},
+        },
+        "timestamp": "2026-02-07T10:00:00.000Z",
+    }))
+    # Second assistant message with one tool
+    lines.append(json.dumps({
+        "type": "assistant",
+        "message": {
+            "model": "claude-sonnet-4-20250514",
+            "content": [
+                {"type": "tool_use", "id": "t3", "name": "Read", "input": {"file_path": "/bar"}},
+            ],
+            "usage": {"input_tokens": 800, "output_tokens": 150, "cache_read_input_tokens": 300, "cache_creation_input_tokens": 0},
+        },
+        "timestamp": "2026-02-07T10:01:00.000Z",
+    }))
+    # Turn duration
+    lines.append(json.dumps({
+        "type": "system",
+        "subtype": "turn_duration",
+        "durationMs": 5000,
+        "timestamp": "2026-02-07T10:01:30.000Z",
+    }))
+    lines.append(json.dumps({
+        "type": "system",
+        "subtype": "turn_duration",
+        "durationMs": 3000,
+        "timestamp": "2026-02-07T10:02:00.000Z",
+    }))
+    transcript.write_text("\n".join(lines) + "\n")
+
+    detail = parse_subagent_transcript(transcript)
+    assert detail.agent_id == "abc123"
+    assert detail.input_tokens == 1800  # 1000 + 800
+    assert detail.output_tokens == 350  # 200 + 150
+    assert detail.cache_read_tokens == 800  # 500 + 300
+    assert detail.cache_write_tokens == 50  # 50 + 0
+    assert detail.tool_counts == {"Read": 2, "Edit": 1}
+    assert detail.duration_ms == 8000  # 5000 + 3000
+    assert detail.skills_invoked == []
+
+
+def test_parse_subagent_with_skill(tmp_path):
+    """Subagent that invokes a Skill should have it in skills_invoked."""
+    transcript = tmp_path / "agent-def456.jsonl"
+    lines = []
+    lines.append(json.dumps({
+        "type": "assistant",
+        "message": {
+            "model": "claude-sonnet-4-20250514",
+            "content": [
+                {"type": "tool_use", "id": "t1", "name": "Skill", "input": {"skill": "superpowers:commit", "args": "-m 'fix'"}},
+                {"type": "tool_use", "id": "t2", "name": "Bash", "input": {"command": "ls"}},
+            ],
+            "usage": {"input_tokens": 500, "output_tokens": 100, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
+        },
+        "timestamp": "2026-02-07T10:00:00.000Z",
+    }))
+    lines.append(json.dumps({
+        "type": "assistant",
+        "message": {
+            "model": "claude-sonnet-4-20250514",
+            "content": [
+                {"type": "tool_use", "id": "t3", "name": "Skill", "input": {"skill": "review-pr"}},
+            ],
+            "usage": {"input_tokens": 300, "output_tokens": 80, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
+        },
+        "timestamp": "2026-02-07T10:01:00.000Z",
+    }))
+    transcript.write_text("\n".join(lines) + "\n")
+
+    detail = parse_subagent_transcript(transcript)
+    assert detail.agent_id == "def456"
+    assert detail.skills_invoked == ["commit", "review-pr"]
+    assert detail.tool_counts == {"Skill": 2, "Bash": 1}
+
+
+def test_extract_agent_id_from_tool_result():
+    """Extract agentId from typical tool_result text."""
+    text = "agentId: a82030d (for resuming to continue this agent's work if needed)\nSome other output..."
+    assert extract_agent_id(text) == "a82030d"
+
+
+def test_extract_agent_id_no_match():
+    """Return None for text without agentId."""
+    assert extract_agent_id("No agent ID here") is None
+    assert extract_agent_id("") is None
+
+
+def test_find_subagent_file(tmp_path):
+    """Find a subagent file when directory structure exists."""
+    session_dir = tmp_path / "session123"
+    subagents_dir = session_dir / "subagents"
+    subagents_dir.mkdir(parents=True)
+    agent_file = subagents_dir / "agent-abc123.jsonl"
+    agent_file.write_text('{"type":"assistant"}\n')
+
+    result = find_subagent_file(tmp_path, "session123", "abc123")
+    assert result == agent_file
+
+
+def test_find_subagent_file_missing(tmp_path):
+    """Return None when subagent file doesn't exist."""
+    # No directory at all
+    assert find_subagent_file(tmp_path, "session123", "abc123") is None
+
+    # Directory exists but no file
+    session_dir = tmp_path / "session456"
+    subagents_dir = session_dir / "subagents"
+    subagents_dir.mkdir(parents=True)
+    assert find_subagent_file(tmp_path, "session456", "xyz789") is None
