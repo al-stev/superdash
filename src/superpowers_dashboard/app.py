@@ -266,6 +266,26 @@ class SuperpowersDashboard(App):
                 "tool_summary": tool_summary,
             })
 
+        # Add subagent dispatches
+        for s in self.parser.subagents:
+            if s.detail is not None:
+                detail = s.detail
+                sa_total = detail.input_tokens + detail.output_tokens + detail.cache_read_tokens + detail.cache_write_tokens
+                sa_cost = calculate_cost(
+                    s.model if s.model and s.model != "inherit" else "claude-opus-4-6",
+                    detail.input_tokens, detail.output_tokens,
+                    detail.cache_read_tokens, detail.cache_write_tokens,
+                    pricing,
+                )
+                entries.append({
+                    "kind": "subagent",
+                    "timestamp": s.timestamp,
+                    "description": s.description,
+                    "total_tokens": sa_total,
+                    "cost": sa_cost,
+                    "skills_invoked": detail.skills_invoked,
+                })
+
         # Sort all entries by timestamp
         entries.sort(key=lambda e: e.get("timestamp", ""))
 

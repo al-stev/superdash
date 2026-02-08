@@ -41,6 +41,14 @@ class WorkflowWidget(Static):
         result += f"   \u2503  {bar}  {dur_str}{active_marker}"
         return result
 
+    def format_subagent_entry(self, description: str, total_tokens: int, cost: float, skills_invoked: list[str]) -> str:
+        """Render a subagent dispatch entry in the workflow timeline."""
+        tok_str = format_tokens(total_tokens)
+        skills_line = ", ".join(skills_invoked) if skills_invoked else "(no skills)"
+        result = f"\u25b6 {description:<24} {tok_str:>6} tok  ${cost:.2f}\n"
+        result += f"  \u2514 {skills_line}"
+        return result
+
     def format_overhead(self, input_tokens: int, output_tokens: int, cost: float, duration_seconds: float, tool_summary: str) -> str:
         """Render an overhead segment (work done without any skill active)."""
         total_tokens = input_tokens + output_tokens
@@ -68,6 +76,13 @@ class WorkflowWidget(Static):
                     cost=e.get("cost", 0),
                     duration_seconds=e.get("duration_seconds", 0),
                     tool_summary=e.get("tool_summary", ""),
+                )
+            elif kind == "subagent":
+                text = self.format_subagent_entry(
+                    description=e.get("description", ""),
+                    total_tokens=e.get("total_tokens", 0),
+                    cost=e.get("cost", 0),
+                    skills_invoked=e.get("skills_invoked", []),
                 )
             else:
                 skill_index += 1

@@ -119,3 +119,79 @@ def test_workflow_timeline_backwards_compat():
     content = w._Static__content
     assert "brainstorming" in content
     assert "\u2460" in content
+
+
+def test_workflow_format_subagent():
+    """format_subagent_entry produces text with description, token count, cost, and 'no skills' label."""
+    w = WorkflowWidget()
+    text = w.format_subagent_entry(
+        description="Research TUI",
+        total_tokens=18500,
+        cost=0.42,
+        skills_invoked=[],
+    )
+    assert "\u25b6" in text  # ▶ prefix
+    assert "Research TUI" in text
+    assert "18.5k" in text
+    assert "$0.42" in text
+    assert "(no skills)" in text
+
+
+def test_workflow_format_subagent_with_skills():
+    """format_subagent_entry shows skills when provided."""
+    w = WorkflowWidget()
+    text = w.format_subagent_entry(
+        description="Implement feature",
+        total_tokens=24000,
+        cost=1.20,
+        skills_invoked=["test-driven-development"],
+    )
+    assert "\u25b6" in text  # ▶ prefix
+    assert "Implement feature" in text
+    assert "24.0k" in text
+    assert "$1.20" in text
+    assert "test-driven-development" in text
+    assert "(no skills)" not in text
+
+
+def test_workflow_timeline_with_subagent():
+    """update_timeline handles a mixed list of skill and subagent entries."""
+    w = WorkflowWidget()
+    entries = [
+        {
+            "kind": "skill",
+            "skill_name": "brainstorming",
+            "args": "test idea",
+            "total_tokens": 5000,
+            "cost": 0.50,
+            "duration_seconds": 120,
+            "is_active": False,
+        },
+        {
+            "kind": "subagent",
+            "description": "Research TUI",
+            "total_tokens": 18500,
+            "cost": 0.42,
+            "skills_invoked": [],
+        },
+        {
+            "kind": "skill",
+            "skill_name": "implementing",
+            "args": "build feature",
+            "total_tokens": 10000,
+            "cost": 1.20,
+            "duration_seconds": 300,
+            "is_active": True,
+        },
+    ]
+    w.update_timeline(entries)
+    content = w._Static__content
+    # Skill entries should use circled numbers
+    assert "\u2460" in content  # ① for first skill
+    assert "brainstorming" in content
+    assert "\u2461" in content  # ② for second skill
+    assert "implementing" in content
+    # Subagent entry should show ▶ prefix and description
+    assert "\u25b6" in content
+    assert "Research TUI" in content
+    assert "(no skills)" in content
