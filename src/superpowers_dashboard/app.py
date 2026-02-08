@@ -350,6 +350,8 @@ class SuperpowersDashboard(App):
             all_activity.append(("compaction", c.timestamp, c))
         for s in self.parser.subagents:
             all_activity.append(("subagent", s.timestamp, s))
+        for h in self.parser.hook_events:
+            all_activity.append(("hook", h["timestamp"], h))
         all_activity.sort(key=lambda x: x[1])
 
         # Append only new events
@@ -383,6 +385,8 @@ class SuperpowersDashboard(App):
                     )
                 else:
                     activity.add_subagent(data.timestamp, data.description, data.subagent_type, data.model)
+            elif kind == "hook":
+                activity.add_hook_event(data["timestamp"], data["event"])
         self._last_activity_count = len(all_activity)
 
         # Update header with session info and total cost

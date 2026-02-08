@@ -87,6 +87,7 @@ class SessionParser:
         self._current_overhead: OverheadSegment | None = None
         self.session_count: int = 1
         self.agent_id_map: dict[str, str] = {}  # tool_use_id -> agent_id
+        self.hook_events: list[dict] = []
 
     def process_line(self, line: str):
         try:
@@ -102,6 +103,8 @@ class SessionParser:
             self._process_user(entry)
         elif entry_type == "system":
             self._process_system(entry)
+        elif entry_type == "progress":
+            self._process_progress(entry)
 
     def _process_assistant(self, entry: dict):
         message = entry.get("message", {})
@@ -244,6 +247,15 @@ class SessionParser:
                 if self._current_overhead is None:
                     self._current_overhead = OverheadSegment(timestamp=entry.get("timestamp", ""))
                 self._current_overhead.duration_ms += duration
+
+    def _process_progress(self, entry: dict):
+        data = entry.get("data", {})
+        if data.get("type") == "hook_progress":
+            self.hook_events.append({
+                "event": data.get("hookEventName", ""),
+                "hook_type": data.get("hookType", ""),
+                "timestamp": entry.get("timestamp", ""),
+            })
 
     def _accumulate_tokens(self, usage: dict, model: str, timestamp: str = ""):
         input_tok = usage.get("input_tokens", 0)

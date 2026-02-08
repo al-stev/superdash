@@ -624,3 +624,35 @@ def test_parser_handles_tool_result_list_content():
         "timestamp": "2026-02-07T10:10:00.000Z",
     }))
     assert parser.agent_id_map == {"toolu_task2": "b93141e"}
+
+
+def test_parser_detects_hook_events():
+    """A progress entry with hook_progress type should be tracked in hook_events."""
+    parser = SessionParser()
+    parser.process_line(json.dumps({
+        "type": "progress",
+        "data": {
+            "type": "hook_progress",
+            "hookEventName": "PreToolUse",
+            "hookType": "pre_tool_use",
+        },
+        "timestamp": "2026-02-07T12:00:00.000Z",
+    }))
+    assert len(parser.hook_events) == 1
+    assert parser.hook_events[0]["event"] == "PreToolUse"
+    assert parser.hook_events[0]["hook_type"] == "pre_tool_use"
+    assert parser.hook_events[0]["timestamp"] == "2026-02-07T12:00:00.000Z"
+
+
+def test_parser_ignores_non_hook_progress():
+    """A progress entry with a non-hook type should NOT create a hook event."""
+    parser = SessionParser()
+    parser.process_line(json.dumps({
+        "type": "progress",
+        "data": {
+            "type": "tool_progress",
+            "toolName": "Bash",
+        },
+        "timestamp": "2026-02-07T12:00:00.000Z",
+    }))
+    assert len(parser.hook_events) == 0

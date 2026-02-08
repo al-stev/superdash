@@ -26,6 +26,11 @@ def format_compaction_entry(timestamp: str, kind: str, pre_tokens: int) -> str:
     return f"  {time_str}  {label}  {pre_tokens:,} tok"
 
 
+def format_hook_entry(timestamp: str, event: str) -> str:
+    time_str = _parse_time(timestamp)
+    return f"  {time_str}  \u26a1 Hook: {event}"
+
+
 def format_subagent_entry(timestamp: str, description: str, subagent_type: str, model: str) -> str:
     time_str = _parse_time(timestamp)
     model_str = f" [{model}]" if model and model != "inherit" else ""
@@ -104,6 +109,10 @@ class ActivityLogWidget(RichLog):
 
     def add_skill_event(self, timestamp: str, skill_name: str, args: str):
         text = format_log_entry(timestamp, skill_name, args)
+        self.write(text)
+
+    def add_hook_event(self, timestamp: str, event: str):
+        text = format_hook_entry(timestamp, event)
         self.write(text)
 
     def add_compaction(self, timestamp: str, kind: str, pre_tokens: int):
