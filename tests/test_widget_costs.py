@@ -81,3 +81,33 @@ def test_per_skill_bars_are_aligned():
                 bar_starts.append(i)
                 break
     assert len(set(bar_starts)) == 1, f"Bars start at different columns: {bar_starts}"
+
+
+def test_stats_widget_shows_session_count():
+    """format_compactions should show 'Sessions: N' when session_count > 1."""
+    from superpowers_dashboard.watcher import CompactionEvent
+    w = StatsWidget()
+    compactions = [
+        CompactionEvent(timestamp="t1", pre_tokens=169162, trigger="auto", kind="compaction"),
+    ]
+    text = w.format_compactions(compactions, session_count=3)
+    assert "Sessions: 3" in text
+
+
+def test_stats_widget_hides_session_count_when_one():
+    """format_compactions should not show 'Sessions' when session_count is 1."""
+    from superpowers_dashboard.watcher import CompactionEvent
+    w = StatsWidget()
+    compactions = [
+        CompactionEvent(timestamp="t1", pre_tokens=169162, trigger="auto", kind="compaction"),
+    ]
+    text = w.format_compactions(compactions, session_count=1)
+    assert "Sessions" not in text
+
+
+def test_stats_widget_shows_skill_compliance():
+    """format_compliance should show skill and tool counts."""
+    w = StatsWidget()
+    text = w.format_compliance(skill_count=3, tool_count=28)
+    assert "Skills: 3" in text
+    assert "Tools: 28" in text

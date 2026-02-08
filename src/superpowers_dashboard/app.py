@@ -264,6 +264,8 @@ class SuperpowersDashboard(App):
             subagent_count=len(self.parser.subagents),
             compactions=self.parser.compactions or None,
             context_tokens=context_tokens,
+            session_count=self.parser.session_count,
+            skill_count=len(self.parser.skill_events),
         )
 
         # Build chronological activity feed from all event types

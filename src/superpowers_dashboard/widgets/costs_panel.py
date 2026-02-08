@@ -50,13 +50,15 @@ class StatsWidget(Static):
         bar = "\u2588" * filled + "\u2591" * (20 - filled)
         return f"  Context: {ctx_k:>6.1f}k {bar}"
 
-    def format_compactions(self, compactions: list) -> str:
+    def format_compactions(self, compactions: list, session_count: int = 1) -> str:
         if not compactions:
             return ""
         full = sum(1 for c in compactions if c.kind == "compaction")
         micro = sum(1 for c in compactions if c.kind == "microcompaction")
         clears = sum(1 for c in compactions if c.kind == "clear")
         parts = []
+        if session_count > 1:
+            parts.append(f"  Sessions: {session_count}")
         if full:
             parts.append(f"  Context compactions: {full}")
         if micro:
@@ -65,16 +67,24 @@ class StatsWidget(Static):
             parts.append(f"  Context clears: {clears}")
         return "\n".join(parts)
 
-    def update_stats(self, summary: str, per_skill: list[dict], tool_counts: dict[str, int] | None = None, subagent_count: int = 0, compactions: list | None = None, context_tokens: int = 0):
+    def format_compliance(self, skill_count: int, tool_count: int) -> str:
+        return f"  Skills: {skill_count}  |  Tools: {tool_count}"
+
+    def update_stats(self, summary: str, per_skill: list[dict], tool_counts: dict[str, int] | None = None, subagent_count: int = 0, compactions: list | None = None, context_tokens: int = 0, session_count: int = 1, skill_count: int = 0):
         parts = [summary, "  " + "\u2500" * 38]
 
         # Context window usage right after summary
         if context_tokens > 0:
             parts.append(self.format_context(context_tokens))
 
+        # Skill/tool compliance counts
+        total_tools = sum(tool_counts.values()) if tool_counts else 0
+        if skill_count > 0 or total_tools > 0:
+            parts.append(self.format_compliance(skill_count, total_tools))
+
         # Compactions in high-visibility position, right after summary/context
         if compactions:
-            parts.append(self.format_compactions(compactions))
+            parts.append(self.format_compactions(compactions, session_count=session_count))
 
         # Per-skill cost bars
         if per_skill:
