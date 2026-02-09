@@ -1,5 +1,15 @@
 """Workflow timeline widget showing skill invocation history."""
+from datetime import datetime
 from textual.widgets import Static
+
+
+def _parse_time(timestamp: str) -> str:
+    try:
+        dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        return dt.strftime("%H:%M:%S")
+    except (ValueError, AttributeError):
+        return "??:??:??"
+
 
 def format_tokens(count: int) -> str:
     if count >= 1_000_000:
@@ -27,7 +37,7 @@ def _cost_bar(cost: float, max_cost: float, width: int = 14) -> str:
 class WorkflowWidget(Static):
     """Displays vertical timeline of skill invocations."""
 
-    def format_entry(self, index: int, skill_name: str, args: str, total_tokens: int, cost: float, duration_seconds: float, max_cost: float, is_active: bool) -> str:
+    def format_entry(self, index: int, skill_name: str, args: str, total_tokens: int, cost: float, duration_seconds: float, max_cost: float, is_active: bool, timestamp: str = "") -> str:
         tok_str = format_tokens(total_tokens)
         dur_str = format_duration_minutes(duration_seconds)
         bar = _cost_bar(cost, max_cost)
@@ -35,7 +45,9 @@ class WorkflowWidget(Static):
         args_display = f'"{args[:30]}..."' if len(args) > 30 else f'"{args}"' if args else ""
         num = "\u2460\u2461\u2462\u2463\u2464\u2465\u2466\u2467\u2468\u2469"
         idx_char = num[index - 1] if 1 <= index <= 10 else f"({index})"
-        result = f"{idx_char} {skill_name:<24} {tok_str:>6} tok  ${cost:.2f}\n"
+        time_str = _parse_time(timestamp) if timestamp else ""
+        time_prefix = f"{time_str}  " if time_str else ""
+        result = f"{time_prefix}{idx_char} {skill_name:<24} {tok_str:>6} tok  ${cost:.2f}\n"
         if args_display:
             result += f"   \u2503  {args_display}\n"
         result += f"   \u2503  {bar}  {dur_str}{active_marker}"
@@ -49,16 +61,25 @@ class WorkflowWidget(Static):
         result += f"  \u2514 {skills_line}"
         return result
 
-    def format_overhead(self, input_tokens: int, output_tokens: int, cost: float, duration_seconds: float, tool_summary: str) -> str:
+    def format_overhead(self, input_tokens: int, output_tokens: int, cost: float, duration_seconds: float, tool_summary: str, timestamp: str = "") -> str:
         """Render an overhead segment (work done without any skill active)."""
         total_tokens = input_tokens + output_tokens
         tok_str = format_tokens(total_tokens)
         dur_str = format_duration_minutes(duration_seconds)
-        result = f"   \u2500\u2500 no skill \u2500\u2500        {tok_str:>6} tok  ${cost:.2f}\n"
+        time_str = _parse_time(timestamp) if timestamp else ""
+        time_prefix = f"{time_str}  " if time_str else ""
+        result = f"{time_prefix}   \u2500\u2500 no skill \u2500\u2500        {tok_str:>6} tok  ${cost:.2f}\n"
         if tool_summary:
             result += f"   \u2503  {tool_summary}\n"
         result += f"   \u2503  {dur_str}"
         return result
+
+    def format_compaction(self, timestamp: str, kind: str, pre_tokens: int) -> str:
+        """Render a compaction event in the timeline."""
+        time_str = _parse_time(timestamp) if timestamp else ""
+        time_prefix = f"{time_str}  " if time_str else ""
+        label = "MICROCOMPACTION" if kind == "microcompaction" else "COMPACTION"
+        return f"{time_prefix}   \u2500\u2500 {label} \u2500\u2500  {pre_tokens:,} tok"
 
     _ROLE_LABELS = {
         "implementer": "implement",
@@ -122,6 +143,7 @@ class WorkflowWidget(Static):
         skill_index = 0
         for e in entries:
             kind = e.get("kind", "skill")
+            timestamp = e.get("timestamp", "")
             if kind == "overhead":
                 text = self.format_overhead(
                     input_tokens=e.get("input_tokens", 0),
@@ -129,6 +151,7 @@ class WorkflowWidget(Static):
                     cost=e.get("cost", 0),
                     duration_seconds=e.get("duration_seconds", 0),
                     tool_summary=e.get("tool_summary", ""),
+                    timestamp=timestamp,
                 )
             elif kind == "subagent":
                 text = self.format_subagent_entry(
@@ -136,6 +159,12 @@ class WorkflowWidget(Static):
                     total_tokens=e.get("total_tokens", 0),
                     cost=e.get("cost", 0),
                     skills_invoked=e.get("skills_invoked", []),
+                )
+            elif kind == "compaction":
+                text = self.format_compaction(
+                    timestamp=timestamp,
+                    kind=e.get("compaction_kind", "compaction"),
+                    pre_tokens=e.get("pre_tokens", 0),
                 )
             else:
                 skill_index += 1
@@ -148,6 +177,7 @@ class WorkflowWidget(Static):
                     duration_seconds=e.get("duration_seconds", 0),
                     max_cost=max_cost,
                     is_active=e.get("is_active", False),
+                    timestamp=timestamp,
                 )
                 # Append task groups if present
                 task_groups = e.get("task_groups")

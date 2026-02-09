@@ -1,4 +1,4 @@
-from superpowers_dashboard.widgets.activity import format_log_entry, format_compaction_entry, format_subagent_entry, format_subagent_detail_entry
+from superpowers_dashboard.widgets.activity import format_log_entry, format_compaction_entry, format_subagent_entry, format_subagent_detail_entry, should_show_activity
 
 
 def test_format_log_entry():
@@ -162,3 +162,15 @@ def test_format_subagent_detail_top_5_tools():
     assert "Edit(5)" in text
     assert "Write(3)" in text
     assert "Bash(1)" not in text  # 6th tool should be excluded
+
+
+def test_should_show_activity_filters_hooks():
+    """Hook events should be excluded from the activity feed."""
+    assert should_show_activity("hook") is False
+
+
+def test_should_show_activity_allows_other_kinds():
+    """Non-hook events should be shown in the activity feed."""
+    assert should_show_activity("skill") is True
+    assert should_show_activity("compaction") is True
+    assert should_show_activity("subagent") is True

@@ -361,6 +361,40 @@ def find_subagent_file(project_dir: Path, session_id: str, agent_id: str) -> Pat
     return path if path.exists() else None
 
 
+def find_latest_project_sessions(base_dir: Path | None = None) -> list[Path]:
+    """Find sessions from the most recently active project.
+
+    Scans all project directories and returns sessions from whichever
+    has the most recently modified JSONL file.
+    """
+    if base_dir is None:
+        base_dir = Path.home() / ".claude" / "projects"
+    if not base_dir.exists():
+        return []
+
+    latest_session: Path | None = None
+    latest_mtime = 0.0
+
+    for project_dir in base_dir.iterdir():
+        if not project_dir.is_dir():
+            continue
+        for jsonl in project_dir.glob("*.jsonl"):
+            mtime = jsonl.stat().st_mtime
+            if mtime > latest_mtime:
+                latest_mtime = mtime
+                latest_session = jsonl
+
+    if latest_session is None:
+        return []
+
+    # Return all sessions from the same project directory
+    project_dir = latest_session.parent
+    sessions = list(project_dir.glob("*.jsonl"))
+    sessions = [s for s in sessions if "subagents" not in s.parts]
+    sessions.sort(key=lambda p: p.stat().st_mtime)
+    return sessions
+
+
 def _cwd_to_project_dir_name(cwd: str) -> str:
     """Convert a working directory path to Claude's project directory name."""
     return cwd.replace("/", "-")

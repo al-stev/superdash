@@ -104,6 +104,11 @@ def format_subagent_detail_entry(
     return "\n".join(lines)
 
 
+def should_show_activity(kind: str) -> bool:
+    """Return whether an activity event kind should appear in the feed."""
+    return kind != "hook"
+
+
 class ActivityLogWidget(RichLog):
     """Scrollable chronological log of skill invocations."""
 

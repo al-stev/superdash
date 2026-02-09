@@ -10,7 +10,7 @@ from textual.widgets import Header, Footer, Static
 from superpowers_dashboard.config import load_config
 from superpowers_dashboard.registry import SkillRegistry
 from superpowers_dashboard.watcher import (
-    SessionParser, find_project_sessions,
+    SessionParser, find_project_sessions, find_latest_project_sessions,
     find_subagent_file, parse_subagent_transcript,
 )
 from superpowers_dashboard.costs import calculate_cost, resolve_model
@@ -18,7 +18,6 @@ from superpowers_dashboard.grouping import build_task_groups
 from superpowers_dashboard.widgets.skill_list import SkillListWidget
 from superpowers_dashboard.widgets.workflow import WorkflowWidget
 from superpowers_dashboard.widgets.costs_panel import StatsWidget
-from superpowers_dashboard.widgets.activity import ActivityLogWidget
 from superpowers_dashboard.widgets.hooks_panel import HooksWidget, load_all_hooks
 
 
@@ -90,12 +89,12 @@ class SuperpowersDashboard(App):
     * { background: transparent; }
     #top-row { height: 1fr; }
     #left-column { width: 45; }
-    #right-column { width: 1fr; }
+    #middle-column { width: 1fr; }
+    #right-column { width: 45; }
     #skills-panel { height: auto; border: tall $border; }
     #hooks-panel { height: auto; border: tall $border; }
     #stats-panel { height: 1fr; border: tall $border; }
     #workflow-panel { height: 1fr; border: tall $border; }
-    #activity-panel { height: 1fr; border: tall $border; }
     .panel-title { text-style: bold; padding: 0 1; }
     Header { background: #000000; color: $foreground; }
     Footer { background: #000000; }
@@ -113,7 +112,6 @@ class SuperpowersDashboard(App):
         self._current_theme = "terminal"
         self._session_path: Path | None = None
         self._file_pos = 0
-        self._last_activity_count = 0
         self._project_dir = project_dir
 
         # Load skill registry
@@ -130,16 +128,14 @@ class SuperpowersDashboard(App):
                 with Vertical(id="hooks-panel"):
                     yield Static("HOOKS", classes="panel-title")
                     yield HooksWidget(id="hooks")
-                with VerticalScroll(id="stats-panel"):
-                    yield Static("STATS", classes="panel-title")
-                    yield StatsWidget(id="stats")
-            with Vertical(id="right-column"):
-                with VerticalScroll(id="workflow-panel"):
+            with VerticalScroll(id="middle-column"):
+                with Vertical(id="workflow-panel"):
                     yield Static("WORKFLOW", classes="panel-title")
                     yield WorkflowWidget(id="workflow")
-                with Vertical(id="activity-panel"):
-                    yield Static("ACTIVITY LOG", classes="panel-title")
-                    yield ActivityLogWidget(id="activity")
+            with VerticalScroll(id="right-column"):
+                with Vertical(id="stats-panel"):
+                    yield Static("STATS", classes="panel-title")
+                    yield StatsWidget(id="stats")
         yield Footer()
 
     def on_mount(self):
@@ -158,6 +154,8 @@ class SuperpowersDashboard(App):
 
         # Find all sessions for this project and parse them
         project_sessions = find_project_sessions(project_cwd=self._project_dir)
+        if not project_sessions:
+            project_sessions = find_latest_project_sessions()
         if project_sessions:
             self._session_path = project_sessions[-1]  # latest for polling
             self._load_all_sessions(project_sessions)
@@ -179,6 +177,8 @@ class SuperpowersDashboard(App):
         """Check for new lines in the session file, and detect new sessions."""
         # Check for new session files
         current_sessions = find_project_sessions(project_cwd=self._project_dir)
+        if not current_sessions:
+            current_sessions = find_latest_project_sessions()
         if current_sessions and current_sessions[-1] != self._session_path:
             new_path = current_sessions[-1]
             with open(new_path) as f:
@@ -323,6 +323,15 @@ class SuperpowersDashboard(App):
         for u in ungrouped:
             entries.append(u)
 
+        # Add compaction events to timeline
+        for c in self.parser.compactions:
+            entries.append({
+                "kind": "compaction",
+                "timestamp": c.timestamp,
+                "compaction_kind": c.kind,
+                "pre_tokens": c.pre_tokens,
+            })
+
         # Sort all entries by timestamp
         entries.sort(key=lambda e: e.get("timestamp", ""))
 
@@ -367,47 +376,6 @@ class SuperpowersDashboard(App):
             skill_count=len(self.parser.skill_events),
             subagent_details=subagent_details_list or None,
         )
-
-        # Build chronological activity feed from all event types
-        all_activity = []
-        for event in self.parser.skill_events:
-            all_activity.append(("skill", event.timestamp, event))
-        for c in self.parser.compactions:
-            all_activity.append(("compaction", c.timestamp, c))
-        for s in self.parser.subagents:
-            all_activity.append(("subagent", s.timestamp, s))
-        for h in self.parser.hook_events:
-            all_activity.append(("hook", h["timestamp"], h))
-        all_activity.sort(key=lambda x: x[1])
-
-        # Append only new events
-        activity = self.query_one("#activity", ActivityLogWidget)
-        for item in all_activity[self._last_activity_count:]:
-            kind, _, data = item
-            if kind == "skill":
-                activity.add_skill_event(data.timestamp, data.skill_name, data.args)
-            elif kind == "compaction":
-                activity.add_compaction(data.timestamp, data.kind, data.pre_tokens)
-            elif kind == "subagent":
-                if data.detail is not None:
-                    detail = data.detail
-                    activity.add_subagent_detail(
-                        timestamp=data.timestamp,
-                        description=data.description,
-                        subagent_type=data.subagent_type,
-                        model=data.model,
-                        tool_counts=detail.tool_counts,
-                        input_tokens=detail.input_tokens,
-                        output_tokens=detail.output_tokens,
-                        cost=detail.cost,
-                        skills_invoked=detail.skills_invoked,
-                        status="complete",
-                    )
-                else:
-                    activity.add_subagent(data.timestamp, data.description, data.subagent_type, data.model)
-            elif kind == "hook":
-                activity.add_hook_event(data["timestamp"], data["event"])
-        self._last_activity_count = len(all_activity)
 
         # Update header with session info and total cost
         session_id = self._session_path.stem[:6] if self._session_path else "none"

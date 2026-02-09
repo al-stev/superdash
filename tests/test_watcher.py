@@ -297,6 +297,37 @@ def test_find_project_sessions_no_match(tmp_path):
     assert sessions == []
 
 
+def test_find_latest_project_sessions(tmp_path):
+    """When no CWD match, find_latest_project_sessions returns most recent project."""
+    from superpowers_dashboard.watcher import find_latest_project_sessions
+    import time
+
+    # Older project
+    old_dir = tmp_path / "-Users-al-old"
+    old_dir.mkdir()
+    old_session = old_dir / "old.jsonl"
+    old_session.write_text('{"type":"user"}\n')
+
+    time.sleep(0.05)  # ensure different mtime
+
+    # Newer project
+    new_dir = tmp_path / "-Users-al-new"
+    new_dir.mkdir()
+    new_session = new_dir / "new.jsonl"
+    new_session.write_text('{"type":"user"}\n')
+
+    sessions = find_latest_project_sessions(base_dir=tmp_path)
+    assert len(sessions) == 1
+    assert sessions[0] == new_session
+
+
+def test_find_latest_project_sessions_empty(tmp_path):
+    """Return empty list when no projects exist."""
+    from superpowers_dashboard.watcher import find_latest_project_sessions
+    sessions = find_latest_project_sessions(base_dir=tmp_path)
+    assert sessions == []
+
+
 def test_parser_tracks_overhead_segments():
     """Overhead before first skill creates a segment with correct tokens and tool count."""
     parser = SessionParser()
