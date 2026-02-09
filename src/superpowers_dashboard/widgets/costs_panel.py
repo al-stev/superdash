@@ -111,7 +111,7 @@ class StatsWidget(Static):
                     tok_str = tok_str[:-3] + "k"
             else:
                 tok_str = str(total_tok)
-            lines.append(f"    {m['model']:<20} {tok_str:>6} tok  ${m['cost']:.2f}")
+            lines.append(f"    {m['model']:<14} {tok_str:>6} tok ${m['cost']:>7.2f}")
         return "\n".join(lines)
 
     def update_stats(self, summary: str, per_skill: list[dict], tool_counts: dict[str, int] | None = None, subagent_count: int = 0, compactions: list | None = None, context_tokens: int = 0, session_count: int = 1, skill_count: int = 0, subagent_details: list | None = None, model_stats: list[dict] | None = None):

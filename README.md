@@ -33,10 +33,10 @@ superdash --project-dir /path/to/project
 
 | Panel | Location | Shows |
 |-------|----------|-------|
-| **Skills** | Top-left | All registered skills with active/used/available status |
-| **Workflow** | Top-right | Timeline of skill invocations with tokens, cost, duration |
-| **Stats** | Bottom-left | Session cost, context usage, compactions, tool counts |
-| **Activity Log** | Bottom-right | Chronological event feed |
+| **Skills** | Left | All registered skills with active/used/available status |
+| **Hooks** | Left | Configured hook events and their scripts |
+| **Workflow** | Center | Timeline of skill invocations with tokens, cost, duration |
+| **Stats** | Right | Session cost, context usage, compactions, tool counts, per-model breakdown |
 
 ### Keybindings
 

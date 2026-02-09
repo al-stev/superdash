@@ -153,8 +153,8 @@ def test_stats_widget_shows_model_usage():
     text = w.format_model_usage(model_stats)
     assert "opus" in text
     assert "haiku" in text
-    assert "$4.50" in text
-    assert "$0.08" in text
+    assert "4.50" in text
+    assert "0.08" in text
 
 
 def test_stats_widget_subagent_stats_tokens_below_1k():
@@ -168,6 +168,18 @@ def test_stats_widget_subagent_stats_tokens_below_1k():
     )
     assert "500" in text
     assert "k" not in text.split("Total tokens:")[-1] or "500" in text
+
+
+def test_model_usage_line_fits_in_panel():
+    """Each model usage line must fit within 43 chars (45 panel - 2 border)."""
+    w = StatsWidget()
+    model_stats = [
+        {"model": "opus", "input_tokens": 150000, "output_tokens": 18000, "cost": 156.11},
+        {"model": "<synthetic>", "input_tokens": 5000, "output_tokens": 1000, "cost": 0.08},
+    ]
+    text = w.format_model_usage(model_stats)
+    for line in text.split("\n"):
+        assert len(line) <= 43, f"Line too wide ({len(line)} chars): {line!r}"
 
 
 def test_stats_widget_model_usage_with_multiple_entries():
