@@ -383,6 +383,24 @@ class SuperpowersDashboard(App):
                 "output_tokens": usage["output_tokens"],
                 "cost": cost,
             })
+        # Fold subagent tokens into per-model stats
+        for s in self.parser.subagents:
+            if s.detail is not None:
+                sa_model_id = s.model
+                display_name = sa_model_id.split("-")[1] if "-" in sa_model_id else sa_model_id
+                # Find or create entry
+                existing = next((m for m in model_stats if m["model"] == display_name), None)
+                if existing:
+                    existing["input_tokens"] += s.detail.input_tokens
+                    existing["output_tokens"] += s.detail.output_tokens
+                    existing["cost"] += s.detail.cost
+                else:
+                    model_stats.append({
+                        "model": display_name,
+                        "input_tokens": s.detail.input_tokens,
+                        "output_tokens": s.detail.output_tokens,
+                        "cost": s.detail.cost,
+                    })
         model_stats.sort(key=lambda m: -m["cost"])
 
         context_tokens = self.parser.last_context_tokens

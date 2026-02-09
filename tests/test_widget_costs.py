@@ -168,3 +168,18 @@ def test_stats_widget_subagent_stats_tokens_below_1k():
     )
     assert "500" in text
     assert "k" not in text.split("Total tokens:")[-1] or "500" in text
+
+
+def test_stats_widget_model_usage_with_multiple_entries():
+    """Model usage should handle multiple models sorted by cost descending."""
+    w = StatsWidget()
+    model_stats = [
+        {"model": "haiku", "input_tokens": 5000, "output_tokens": 1000, "cost": 0.08},
+        {"model": "opus", "input_tokens": 50000, "output_tokens": 10000, "cost": 4.50},
+        {"model": "sonnet", "input_tokens": 20000, "output_tokens": 5000, "cost": 1.20},
+    ]
+    text = w.format_model_usage(model_stats)
+    # All three models present
+    assert "opus" in text
+    assert "sonnet" in text
+    assert "haiku" in text
