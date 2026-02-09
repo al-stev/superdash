@@ -14,6 +14,7 @@ from superpowers_dashboard.watcher import (
     find_subagent_file, parse_subagent_transcript,
 )
 from superpowers_dashboard.costs import calculate_cost, resolve_model
+from superpowers_dashboard.grouping import build_task_groups
 from superpowers_dashboard.widgets.skill_list import SkillListWidget
 from superpowers_dashboard.widgets.workflow import WorkflowWidget
 from superpowers_dashboard.widgets.costs_panel import StatsWidget
@@ -283,19 +284,44 @@ class SuperpowersDashboard(App):
                 "tool_summary": tool_summary,
             })
 
-        # Add subagent dispatches
+        # Build subagent entries with role/status for grouping
+        subagent_entries_for_grouping = []
         for s in self.parser.subagents:
             if s.detail is not None:
                 detail = s.detail
                 sa_total = detail.input_tokens + detail.output_tokens + detail.cache_read_tokens + detail.cache_write_tokens
-                entries.append({
+                subagent_entries_for_grouping.append({
                     "kind": "subagent",
                     "timestamp": s.timestamp,
                     "description": s.description,
+                    "subagent_type": s.subagent_type,
                     "total_tokens": sa_total,
                     "cost": detail.cost,
                     "skills_invoked": detail.skills_invoked,
                 })
+            else:
+                subagent_entries_for_grouping.append({
+                    "kind": "subagent",
+                    "timestamp": s.timestamp,
+                    "description": s.description,
+                    "subagent_type": s.subagent_type,
+                    "total_tokens": 0,
+                    "cost": 0,
+                    "skills_invoked": [],
+                })
+
+        # Group subagents by task number
+        task_groups, ungrouped = build_task_groups(subagent_entries_for_grouping)
+
+        # Attach task groups to their parent skill entry
+        if task_groups and entries:
+            skill_entries_list = [e for e in entries if e.get("kind", "skill") == "skill"]
+            if skill_entries_list:
+                skill_entries_list[-1]["task_groups"] = task_groups
+
+        # Add ungrouped subagents as flat entries
+        for u in ungrouped:
+            entries.append(u)
 
         # Sort all entries by timestamp
         entries.sort(key=lambda e: e.get("timestamp", ""))

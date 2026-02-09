@@ -39,6 +39,12 @@ def build_task_groups(
         role = classify_role(desc, stype)
         entry_with_role = {**entry, "role": role}
 
+        # Detect status: has token data = complete, otherwise = running
+        if entry.get("total_tokens", 0) > 0:
+            entry_with_role["status"] = "complete"
+        else:
+            entry_with_role["status"] = "running"
+
         task_num = extract_task_number(desc)
         if task_num is None:
             ungrouped.append(entry_with_role)

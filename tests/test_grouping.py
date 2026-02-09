@@ -110,3 +110,17 @@ def test_build_task_groups_cost_aggregation():
     ]
     groups, _ = build_task_groups(subagent_entries)
     assert abs(groups[1].total_cost - 0.15) < 0.001
+
+
+def test_build_task_groups_subagent_status_detection():
+    """Subagents with total_tokens > 0 get status 'complete', otherwise 'running'."""
+    subagent_entries = [
+        {"description": "Implement Task 1: Fix bug", "subagent_type": "general-purpose",
+         "timestamp": "2026-02-07T10:00:00Z", "total_tokens": 4000, "cost": 0.12, "skills_invoked": []},
+        {"description": "Review spec compliance Task 1", "subagent_type": "general-purpose",
+         "timestamp": "2026-02-07T10:05:00Z", "total_tokens": 0, "cost": 0, "skills_invoked": []},
+    ]
+    groups, _ = build_task_groups(subagent_entries)
+    subs = groups[1].subagents
+    assert subs[0].get("status") == "complete"
+    assert subs[1].get("status") == "running"
