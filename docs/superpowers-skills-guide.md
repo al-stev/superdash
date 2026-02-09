@@ -178,17 +178,85 @@ The key insight: **TDD happens inside the subagents**, not at the orchestration 
 
 ---
 
-## Option A vs Option B: Same Session vs Parallel Session
+## The Three Execution Methods
 
-| | Subagent-Driven (Option A) | Executing Plans (Option B) |
-|-|---------------------------|---------------------------|
-| **Where** | Same conversation | New Claude session in worktree |
-| **Review** | Two-stage (spec + quality) per task, automatic | Checkpoint-based, human reviews batches |
-| **Speed** | Faster iteration, no human-in-loop between tasks | Human reviews between batches |
-| **Context** | Fresh subagent per task (no pollution) | Single session accumulates context |
-| **When to pick** | Tasks are independent, you want hands-off | Tasks are coupled, you want control |
+There are three ways to get work done through subagents. They serve different purposes and are not interchangeable.
 
-**dispatching-parallel-agents** is different from both — it's for running multiple independent investigations simultaneously, not for plan execution.
+### Subagent-Driven Development (Option A)
+
+**What it is:** The orchestrator stays in your current session. It dispatches one fresh subagent per task, sequentially. After each task, it dispatches a spec-reviewer subagent (does the code match the plan?) then a code-quality-reviewer subagent (is it well-built?). If either reviewer finds issues, the implementer fixes them and gets re-reviewed.
+
+**Pros:**
+- No context switch — everything happens in your conversation
+- Fresh subagent per task — no context pollution between tasks
+- Two-stage review is automatic — you don't have to remember to ask
+- Subagent questions surface before work begins (the orchestrator can answer them)
+- Fast iteration — no human-in-loop between tasks
+
+**Cons:**
+- Sequential only — tasks run one at a time (no parallelism for implementation)
+- More expensive — each task dispatches 3 subagents (implementer + 2 reviewers), plus re-reviews
+- Orchestrator accumulates context — the controller session grows over time
+- If the orchestrator compacts, it may lose track of task state
+
+**Best for:** 5-15 independent tasks where you want hands-off execution with quality gates.
+
+### Executing Plans (Option B)
+
+**What it is:** You open a new Claude session in the worktree and tell it to use `executing-plans`. It reads the plan file, executes tasks in batches of 2-4, and stops at checkpoints for you to review.
+
+**Pros:**
+- Human review between batches — you see intermediate results and can redirect
+- Can handle coupled tasks — you control the ordering
+- Fresh session — no prior context to interfere
+- Simpler — fewer subagent dispatches, lower cost
+
+**Cons:**
+- Requires context switching (opening a new session)
+- Human-in-loop slows things down — you wait for checkpoints
+- Single session accumulates context across all tasks
+- No automatic two-stage review (relies on the executor's own judgment)
+
+**Best for:** Tightly coupled tasks, unfamiliar codebases, or when you want more control over execution order and intermediate results.
+
+### Dispatching Parallel Agents
+
+**What it is:** Multiple subagents run simultaneously on independent problems. Not for plan execution — for investigation, research, and tasks with no shared state.
+
+**Pros:**
+- True parallelism — 3 investigations run at the same time
+- Fast for independent problems — total time = slowest agent, not sum
+- Each agent gets full context window — no pollution
+
+**Cons:**
+- Tasks must be truly independent — shared files cause conflicts
+- No ordering guarantees — agents don't know about each other
+- Not suitable for implementation — two agents editing the same file will collide
+- No review cycle built in
+
+**Best for:** "We have 3 bugs in unrelated systems — investigate all of them." Or: "Research how X works, and separately research how Y works, and separately check if Z is feasible."
+
+### When to Use Which
+
+```
+Need to implement a plan?
+│
+├─ Tasks are independent, want hands-off
+│   └─ subagent-driven-development (Option A)
+│
+├─ Tasks are coupled, want control
+│   └─ executing-plans (Option B)
+│
+└─ Not implementing — investigating/researching?
+    │
+    ├─ 2+ independent questions
+    │   └─ dispatching-parallel-agents
+    │
+    └─ One focused question
+        └─ Single subagent (Task tool directly)
+```
+
+**You might combine them.** For example: use `dispatching-parallel-agents` to investigate 3 potential approaches in parallel, then use the results to inform a `brainstorming` session, which produces a plan, which gets executed by `subagent-driven-development`.
 
 ---
 
