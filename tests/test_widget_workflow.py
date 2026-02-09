@@ -353,6 +353,19 @@ def test_workflow_timeline_with_task_groups():
     assert "quality" in content
 
 
+def test_workflow_format_clear():
+    """format_compaction renders clear events with CLEAR label."""
+    w = WorkflowWidget()
+    text = w.format_compaction(
+        timestamp="2026-02-07T09:30:00.000Z",
+        kind="clear",
+        pre_tokens=0,
+    )
+    assert "CLEAR" in text
+    assert "COMPACTION" not in text
+    assert "09:30" in text
+
+
 def test_workflow_timeline_ungrouped_still_works():
     """Ungrouped subagent entries still render with the existing format."""
     w = WorkflowWidget()

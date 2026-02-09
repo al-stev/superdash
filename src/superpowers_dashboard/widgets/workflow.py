@@ -78,7 +78,12 @@ class WorkflowWidget(Static):
         """Render a compaction event in the timeline."""
         time_str = _parse_time(timestamp) if timestamp else ""
         time_prefix = f"{time_str}  " if time_str else ""
-        label = "MICROCOMPACTION" if kind == "microcompaction" else "COMPACTION"
+        if kind == "microcompaction":
+            label = "MICROCOMPACTION"
+        elif kind == "clear":
+            label = "CLEAR"
+        else:
+            label = "COMPACTION"
         return f"{time_prefix}   \u2500\u2500 {label} \u2500\u2500  {pre_tokens:,} tok"
 
     _ROLE_LABELS = {
