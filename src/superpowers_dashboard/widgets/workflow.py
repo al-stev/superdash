@@ -60,6 +60,59 @@ class WorkflowWidget(Static):
         result += f"   \u2503  {dur_str}"
         return result
 
+    _ROLE_LABELS = {
+        "implementer": "implement",
+        "spec-reviewer": "spec-review",
+        "code-reviewer": "quality",
+        "explorer": "explore",
+        "other": "agent",
+    }
+
+    _EXPECTED_ROLES = ["implementer", "spec-reviewer", "code-reviewer"]
+
+    def format_subagent_row(self, role: str, total_tokens: int, cost: float, status: str, connector: str) -> str:
+        """Render a single subagent row within a task group."""
+        label = self._ROLE_LABELS.get(role, role)
+        if status == "complete":
+            icon = "\u2713"  # checkmark
+            tok_str = format_tokens(total_tokens)
+            return f"   \u2503    {connector} {label:<12} {tok_str:>6} tok  ${cost:.2f}  {icon}"
+        elif status == "running":
+            icon = "\u25cf"  # filled circle
+            tok_str = format_tokens(total_tokens) if total_tokens > 0 else ""
+            cost_str = f"${cost:.2f}" if cost > 0 else ""
+            return f"   \u2503    {connector} {label:<12} {tok_str:>6}      {cost_str}  {icon}"
+        else:  # pending
+            icon = "\u25cb"  # open circle
+            return f"   \u2503    {connector} {label:<12}                    {icon}"
+
+    def format_task_group(self, group, is_last: bool = False) -> str:
+        """Render a task group with its subagent rows."""
+        branch = "\u2517\u2501" if is_last else "\u2523\u2501"  # box drawing
+        total_cost = group.total_cost
+        lines = [f"   {branch} Task {group.task_number}: {group.label:<20} ${total_cost:.2f}"]
+
+        existing_roles = [s["role"] for s in group.subagents]
+        all_rows = list(group.subagents)
+
+        for expected_role in self._EXPECTED_ROLES:
+            if expected_role not in existing_roles:
+                all_rows.append({"role": expected_role, "total_tokens": 0, "cost": 0, "status": "pending"})
+
+        for i, sa in enumerate(all_rows):
+            is_last_row = i == len(all_rows) - 1
+            connector = "\u2514" if is_last_row else "\u251c"  # corner or tee
+            status = sa.get("status", "complete")
+            lines.append(self.format_subagent_row(
+                role=sa["role"],
+                total_tokens=sa.get("total_tokens", 0),
+                cost=sa.get("cost", 0),
+                status=status,
+                connector=connector,
+            ))
+
+        return "\n".join(lines)
+
     def update_timeline(self, entries: list[dict]):
         if not entries:
             self.update("  No skills invoked yet.")

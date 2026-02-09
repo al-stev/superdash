@@ -1,4 +1,5 @@
 from superpowers_dashboard.widgets.workflow import WorkflowWidget, format_tokens, format_duration_minutes
+from superpowers_dashboard.grouping import TaskGroup
 
 def test_format_tokens_small():
     assert format_tokens(500) == "500"
@@ -195,3 +196,56 @@ def test_workflow_timeline_with_subagent():
     assert "\u25b6" in content
     assert "Research TUI" in content
     assert "(no skills)" in content
+
+
+def test_workflow_format_task_group_complete():
+    """format_task_group renders a completed task with all three subagent rows."""
+    w = WorkflowWidget()
+    group = TaskGroup(task_number=1, label="Fix overhead cost", subagents=[
+        {"role": "implementer", "total_tokens": 4200, "cost": 0.12, "status": "complete"},
+        {"role": "spec-reviewer", "total_tokens": 1100, "cost": 0.03, "status": "complete"},
+        {"role": "code-reviewer", "total_tokens": 2800, "cost": 0.08, "status": "complete"},
+    ])
+    text = w.format_task_group(group, is_last=False)
+    assert "Task 1" in text
+    assert "Fix overhead cost" in text
+    assert "$0.23" in text  # total cost
+    assert "implement" in text
+    assert "spec-review" in text
+    assert "quality" in text
+    assert "\u2713" in text  # checkmark
+
+
+def test_workflow_format_task_group_in_progress():
+    """format_task_group shows pending subagents with circle icon."""
+    w = WorkflowWidget()
+    group = TaskGroup(task_number=3, label="Workflow gaps", subagents=[
+        {"role": "implementer", "total_tokens": 3100, "cost": 0.09, "status": "running"},
+    ])
+    text = w.format_task_group(group, is_last=True)
+    assert "Task 3" in text
+    assert "\u25cf" in text  # filled circle running
+    assert "\u25cb" in text  # open circle pending (spec and quality not dispatched)
+
+
+def test_workflow_format_subagent_row_complete():
+    """format_subagent_row renders a complete subagent with tokens and cost."""
+    w = WorkflowWidget()
+    text = w.format_subagent_row(
+        role="implementer", total_tokens=4200, cost=0.12, status="complete", connector="\u251c"
+    )
+    assert "implement" in text
+    assert "4.2k" in text
+    assert "$0.12" in text
+    assert "\u2713" in text  # checkmark
+
+
+def test_workflow_format_subagent_row_pending():
+    """format_subagent_row renders a pending subagent without tokens."""
+    w = WorkflowWidget()
+    text = w.format_subagent_row(
+        role="spec-reviewer", total_tokens=0, cost=0, status="pending", connector="\u251c"
+    )
+    assert "spec-review" in text
+    assert "\u25cb" in text  # open circle
+    assert "tok" not in text  # no tokens shown for pending
