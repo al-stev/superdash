@@ -143,6 +143,20 @@ def test_stats_widget_subagent_stats_zero_count():
     assert "0" in text
 
 
+def test_stats_widget_shows_model_usage():
+    """Stats panel should display per-model token counts and costs."""
+    w = StatsWidget()
+    model_stats = [
+        {"model": "opus", "input_tokens": 50000, "output_tokens": 10000, "cost": 4.50},
+        {"model": "haiku", "input_tokens": 5000, "output_tokens": 1000, "cost": 0.08},
+    ]
+    text = w.format_model_usage(model_stats)
+    assert "opus" in text
+    assert "haiku" in text
+    assert "$4.50" in text
+    assert "$0.08" in text
+
+
 def test_stats_widget_subagent_stats_tokens_below_1k():
     """Tokens below 1000 should not show k suffix."""
     w = StatsWidget()

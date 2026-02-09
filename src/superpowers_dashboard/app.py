@@ -365,6 +365,26 @@ class SuperpowersDashboard(App):
         # Collect subagent details for stats aggregation (costs already computed)
         subagent_details_list = [s.detail for s in self.parser.subagents if s.detail is not None]
 
+        # Build per-model stats
+        model_stats = []
+        for model_id, usage in self.parser.model_usage.items():
+            model_name = resolve_model(model_id)
+            cost = calculate_cost(
+                model_name,
+                usage["input_tokens"], usage["output_tokens"],
+                usage["cache_read_tokens"], usage.get("cache_write_tokens", 0),
+                pricing,
+            )
+            # Use short display name
+            display_name = model_id.split("-")[1] if "-" in model_id else model_id
+            model_stats.append({
+                "model": display_name,
+                "input_tokens": usage["input_tokens"],
+                "output_tokens": usage["output_tokens"],
+                "cost": cost,
+            })
+        model_stats.sort(key=lambda m: -m["cost"])
+
         context_tokens = self.parser.last_context_tokens
         stats_widget.update_stats(
             summary, per_skill_list,
@@ -375,6 +395,7 @@ class SuperpowersDashboard(App):
             session_count=self.parser.session_count,
             skill_count=len(self.parser.skill_events),
             subagent_details=subagent_details_list or None,
+            model_stats=model_stats or None,
         )
 
         # Update header with session info and total cost

@@ -95,7 +95,26 @@ class StatsWidget(Static):
             f"    Total tokens:  {tok_str}"
         )
 
-    def update_stats(self, summary: str, per_skill: list[dict], tool_counts: dict[str, int] | None = None, subagent_count: int = 0, compactions: list | None = None, context_tokens: int = 0, session_count: int = 1, skill_count: int = 0, subagent_details: list | None = None):
+    def format_model_usage(self, model_stats: list[dict]) -> str:
+        """Format per-model token and cost breakdown.
+
+        Each entry: {"model": str, "input_tokens": int, "output_tokens": int, "cost": float}
+        """
+        if not model_stats:
+            return ""
+        lines = ["  Models:"]
+        for m in model_stats:
+            total_tok = m["input_tokens"] + m["output_tokens"]
+            if total_tok >= 1000:
+                tok_str = f"{total_tok / 1000:.1f}k"
+                if tok_str.endswith(".0k"):
+                    tok_str = tok_str[:-3] + "k"
+            else:
+                tok_str = str(total_tok)
+            lines.append(f"    {m['model']:<20} {tok_str:>6} tok  ${m['cost']:.2f}")
+        return "\n".join(lines)
+
+    def update_stats(self, summary: str, per_skill: list[dict], tool_counts: dict[str, int] | None = None, subagent_count: int = 0, compactions: list | None = None, context_tokens: int = 0, session_count: int = 1, skill_count: int = 0, subagent_details: list | None = None, model_stats: list[dict] | None = None):
         parts = [summary, "  " + "\u2500" * 38]
 
         # Context window usage right after summary
@@ -140,5 +159,11 @@ class StatsWidget(Static):
             parts.append("")
             parts.append("  " + "\u2500" * 38)
             parts.append(f"  Subagents: {subagent_count}")
+
+        # Per-model usage section
+        if model_stats:
+            parts.append("")
+            parts.append("  " + "\u2500" * 38)
+            parts.append(self.format_model_usage(model_stats))
 
         self.update("\n".join(parts))
