@@ -689,6 +689,53 @@ def test_parser_ignores_non_hook_progress():
     assert len(parser.hook_events) == 0
 
 
+def test_parser_tracks_model_usage():
+    """Parser accumulates tokens per model across all assistant messages."""
+    parser = SessionParser()
+    # Opus message
+    parser.process_line(json.dumps({
+        "type": "assistant",
+        "message": {
+            "model": "claude-opus-4-6",
+            "content": [{"type": "text", "text": "hello"}],
+            "usage": {"input_tokens": 1000, "output_tokens": 200,
+                      "cache_read_input_tokens": 500, "cache_creation_input_tokens": 0},
+        },
+        "timestamp": "2026-02-09T10:00:00.000Z",
+    }))
+    # Haiku message
+    parser.process_line(json.dumps({
+        "type": "assistant",
+        "message": {
+            "model": "claude-haiku-4-5-20251001",
+            "content": [{"type": "text", "text": "hi"}],
+            "usage": {"input_tokens": 300, "output_tokens": 50,
+                      "cache_read_input_tokens": 100, "cache_creation_input_tokens": 0},
+        },
+        "timestamp": "2026-02-09T10:01:00.000Z",
+    }))
+    # Another opus message
+    parser.process_line(json.dumps({
+        "type": "assistant",
+        "message": {
+            "model": "claude-opus-4-6",
+            "content": [{"type": "text", "text": "world"}],
+            "usage": {"input_tokens": 800, "output_tokens": 150,
+                      "cache_read_input_tokens": 200, "cache_creation_input_tokens": 0},
+        },
+        "timestamp": "2026-02-09T10:02:00.000Z",
+    }))
+    assert "claude-opus-4-6" in parser.model_usage
+    assert "claude-haiku-4-5-20251001" in parser.model_usage
+    opus = parser.model_usage["claude-opus-4-6"]
+    assert opus["input_tokens"] == 1800  # 1000 + 800
+    assert opus["output_tokens"] == 350  # 200 + 150
+    assert opus["cache_read_tokens"] == 700  # 500 + 200
+    haiku = parser.model_usage["claude-haiku-4-5-20251001"]
+    assert haiku["input_tokens"] == 300
+    assert haiku["output_tokens"] == 50
+
+
 def test_subagent_event_has_role_field():
     """SubagentEvent should have a role field defaulting to empty string."""
     event = SubagentEvent(

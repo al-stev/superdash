@@ -90,6 +90,7 @@ class SessionParser:
         self.session_count: int = 1
         self.agent_id_map: dict[str, str] = {}  # tool_use_id -> agent_id
         self.hook_events: list[dict] = []
+        self.model_usage: dict[str, dict[str, int]] = {}
 
     def process_line(self, line: str):
         try:
@@ -286,6 +287,15 @@ class SessionParser:
             self._current_overhead.output_tokens += output_tok
             self._current_overhead.cache_read_tokens += cache_read
             self._current_overhead.cache_write_tokens += cache_write
+
+        # Track per-model usage
+        if model:
+            if model not in self.model_usage:
+                self.model_usage[model] = {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0}
+            self.model_usage[model]["input_tokens"] += input_tok
+            self.model_usage[model]["output_tokens"] += output_tok
+            self.model_usage[model]["cache_read_tokens"] += cache_read
+            self.model_usage[model]["cache_write_tokens"] += cache_write
 
 
 def extract_agent_id(text: str) -> str | None:
