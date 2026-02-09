@@ -249,3 +249,52 @@ def test_workflow_format_subagent_row_pending():
     assert "spec-review" in text
     assert "\u25cb" in text  # open circle
     assert "tok" not in text  # no tokens shown for pending
+
+
+def test_workflow_timeline_with_task_groups():
+    """update_timeline renders task groups nested under skill entries."""
+    w = WorkflowWidget()
+    entries = [
+        {
+            "kind": "skill",
+            "skill_name": "subagent-driven-development",
+            "args": "",
+            "total_tokens": 2000,
+            "cost": 0.05,
+            "duration_seconds": 60,
+            "is_active": True,
+            "task_groups": {
+                1: TaskGroup(task_number=1, label="Fix bug", subagents=[
+                    {"role": "implementer", "total_tokens": 4200, "cost": 0.12, "status": "complete"},
+                    {"role": "spec-reviewer", "total_tokens": 1100, "cost": 0.03, "status": "complete"},
+                    {"role": "code-reviewer", "total_tokens": 2800, "cost": 0.08, "status": "complete"},
+                ]),
+            },
+        },
+    ]
+    w.update_timeline(entries)
+    content = w._Static__content
+    assert "subagent-driven-development" in content
+    assert "Task 1" in content
+    assert "Fix bug" in content
+    assert "implement" in content
+    assert "spec-review" in content
+    assert "quality" in content
+
+
+def test_workflow_timeline_ungrouped_still_works():
+    """Ungrouped subagent entries still render with the existing format."""
+    w = WorkflowWidget()
+    entries = [
+        {
+            "kind": "subagent",
+            "description": "Explore skills",
+            "total_tokens": 8000,
+            "cost": 0.20,
+            "skills_invoked": [],
+        },
+    ]
+    w.update_timeline(entries)
+    content = w._Static__content
+    assert "\u25b6" in content  # ▶
+    assert "Explore skills" in content

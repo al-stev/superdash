@@ -139,7 +139,23 @@ class WorkflowWidget(Static):
                 )
             else:
                 skill_index += 1
-                text = self.format_entry(index=skill_index, skill_name=e["skill_name"], args=e.get("args", ""), total_tokens=e.get("total_tokens", 0), cost=e.get("cost", 0), duration_seconds=e.get("duration_seconds", 0), max_cost=max_cost, is_active=e.get("is_active", False))
+                text = self.format_entry(
+                    index=skill_index,
+                    skill_name=e["skill_name"],
+                    args=e.get("args", ""),
+                    total_tokens=e.get("total_tokens", 0),
+                    cost=e.get("cost", 0),
+                    duration_seconds=e.get("duration_seconds", 0),
+                    max_cost=max_cost,
+                    is_active=e.get("is_active", False),
+                )
+                # Append task groups if present
+                task_groups = e.get("task_groups")
+                if task_groups:
+                    sorted_groups = sorted(task_groups.values(), key=lambda g: g.task_number)
+                    for i, group in enumerate(sorted_groups):
+                        is_last = i == len(sorted_groups) - 1
+                        text += "\n" + self.format_task_group(group, is_last=is_last)
             parts.append(text)
         separator = "\n   \u25bc\n"
         self.update(separator.join(parts))
