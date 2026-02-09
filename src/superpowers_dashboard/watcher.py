@@ -42,6 +42,7 @@ class SubagentEvent:
     model: str
     tool_use_id: str = ""
     detail: "SubagentDetail | None" = None
+    role: str = ""
 
 
 @dataclass

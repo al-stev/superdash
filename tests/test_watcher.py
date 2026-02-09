@@ -656,3 +656,14 @@ def test_parser_ignores_non_hook_progress():
         "timestamp": "2026-02-07T12:00:00.000Z",
     }))
     assert len(parser.hook_events) == 0
+
+
+def test_subagent_event_has_role_field():
+    """SubagentEvent should have a role field defaulting to empty string."""
+    event = SubagentEvent(
+        timestamp="2026-02-07T10:00:00Z",
+        description="Implement Task 1: Fix bug",
+        subagent_type="general-purpose",
+        model="inherit",
+    )
+    assert event.role == ""
